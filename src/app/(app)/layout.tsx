@@ -5,7 +5,8 @@ import { BottomNav, QuickAddButton, Sidebar } from "@/components/app/nav";
 import { WorkspaceSwitcher } from "@/components/app/workspace-switcher";
 import { Logo } from "@/components/app/logo";
 import { SwipeNav } from "@/components/app/swipe-nav";
-import { WORKSPACE_COOKIE, getCollaborations, getMemberships } from "@/lib/server/context";
+import { WORKSPACE_COOKIE, getCollaborations, loadMemberships } from "@/lib/server/context";
+import { ServiceProblem } from "@/components/app/service-problem";
 import { SetupRequired, missingConfig } from "@/components/app/setup-required";
 
 // Always rendered per request: private data, and configuration is read at runtime.
@@ -14,7 +15,9 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const missing = missingConfig();
   if (missing.length) return <SetupRequired missing={missing} />;
-  const [memberships, shared] = await Promise.all([getMemberships(), getCollaborations()]);
+  const [loaded, shared] = await Promise.all([loadMemberships(), getCollaborations()]);
+  if (loaded.problem) return <ServiceProblem kind={loaded.problem.kind} code={loaded.problem.code} />;
+  const memberships = loaded.memberships;
   const chosen = (await cookies()).get(WORKSPACE_COOKIE)?.value;
   const current = memberships.find((m) => m.workspace.id === chosen) ?? memberships[0];
   const hasWorkspace = memberships.length > 0;

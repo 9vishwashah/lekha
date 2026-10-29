@@ -15,6 +15,47 @@ export const requireUser = cache(async () => {
   return userId;
 });
 
+/**
+ * The first database call after sign-in failed. These are almost always configuration problems
+ * (Supabase not trusting Clerk, a missing session claim, migrations not applied), so the app shows
+ * a page that says which one instead of a bare "server error". No secrets are included.
+ */
+export type ServiceProblemKind = "trust" | "role" | "schema" | "expired" | "network" | "unknown";
+
+export class ServiceError extends Error {
+  kind: ServiceProblemKind;
+  code: string;
+  constructor(error: { code?: string; message?: string }) {
+    const msg = error.message ?? "";
+    const code = error.code ?? "";
+    const kind: ServiceProblemKind =
+      (code === "PGRST301" || code === "PGRST302") && /suitable key|decode|issuer|kid/i.test(msg)
+        ? "trust"
+        : code === "PGRST303" || /jwt expired/i.test(msg)
+          ? "expired"
+          : code === "42501" || /permission denied/i.test(msg)
+            ? "role"
+            : ["42P01", "42703", "42883", "PGRST200", "PGRST202", "PGRST204", "PGRST205"].includes(code) || /does not exist|schema cache/i.test(msg)
+              ? "schema"
+              : /fetch failed|network|ECONN|ETIMEDOUT/i.test(msg)
+                ? "network"
+                : "unknown";
+    super(`Could not load your workspaces (${kind}${code ? ` ${code}` : ""})`);
+    this.kind = kind;
+    this.code = code;
+  }
+}
+
+/** Memberships, or the configuration problem that stopped them loading. */
+export async function loadMemberships(): Promise<{ memberships: Membership[]; problem: null } | { memberships: null; problem: ServiceError }> {
+  try {
+    return { memberships: await getMemberships(), problem: null };
+  } catch (e) {
+    if (e instanceof ServiceError) return { memberships: null, problem: e };
+    throw e;
+  }
+}
+
 export interface Membership {
   id: string;
   role: Role;
@@ -34,16 +75,22 @@ export const getMemberships = cache(async (): Promise<Membership[]> => {
     .order("created_at");
   if (error) {
     console.error("[db] workspace_members", error.code, error.message, error.details);
-    // PGRST301/302: Supabase could not verify the Clerk session token. This is a setup problem,
-    // not a data problem, so say so (production users still only see the generic error page).
-    if ((error.code === "PGRST301" || error.code === "PGRST302") && /suitable key|decode/i.test(error.message)) {
-      throw new Error(
-        "Supabase could not verify your sign-in. Add Clerk under Supabase → Authentication → Third-Party Auth, and make sure Clerk session tokens include role = authenticated.",
-      );
-    }
-    throw new Error("Could not load your workspaces");
+    throw new ServiceError(error);
   }
   return (data ?? []) as unknown as Membership[];
+});
+
+export interface MyProfile {
+  full_name: string;
+  phone: string | null;
+}
+
+/** The signed-in user's own profile (name and private mobile), or null before it is set. */
+export const getMyProfile = cache(async (): Promise<MyProfile | null> => {
+  await requireUser();
+  const db = await userDb();
+  const { data } = await db.from("user_profiles").select("full_name, phone").maybeSingle();
+  return (data as MyProfile | null) ?? null;
 });
 
 /** Ledgers other people shared with this user (as a collaborator, outside their own workspaces). */

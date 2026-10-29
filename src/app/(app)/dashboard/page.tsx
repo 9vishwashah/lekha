@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock } from "lucide-react";
-import { getWorkspace } from "@/lib/server/context";
+import { getMyProfile, getWorkspace } from "@/lib/server/context";
 import { advancesWithPositions, expenseTotals, ledgerBalances } from "@/lib/server/workspace-data";
 import { loadSharedAccountRows, peoplePositions } from "@/lib/server/people";
 import { PeriodTabs, resolvePeriod } from "@/components/app/period-tabs";
@@ -18,7 +18,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
   const params = (await props.searchParams) as Record<string, string>;
   const period = resolvePeriod(params, ctx.workspace.fy_start_month);
   // A single parallel round; no calls to the sign-in provider while rendering.
-  const [balances, advances, expenses, clients, recent, sharedRows] = await Promise.all([
+  const [balances, advances, expenses, clients, recent, sharedRows, profile] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id, period.range),
     advancesWithPositions(ctx.db, ctx.workspace.id, period.today),
     expenseTotals(ctx.db, ctx.workspace.id, period.range),
@@ -30,6 +30,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
       .order("created_at", { ascending: false })
       .limit(8),
     loadSharedAccountRows(ctx.db),
+    getMyProfile(),
   ]);
 
   const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
@@ -40,7 +41,8 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
     .filter((a) => a.expected_recovery_date)
     .sort((a, b) => (a.expected_recovery_date! < b.expected_recovery_date! ? -1 : 1))
     .slice(0, 5);
-  const firstName = (ctx.displayName ?? "").trim().split(/\s+/)[0] || "there";
+  // The name you entered at setup (or in Settings), never an email handle.
+  const firstName = (profile?.full_name ?? "").trim().split(/\s+/)[0] || "there";
   const recentRows = (recent.data ?? []) as unknown as {
     id: string;
     voucher_no: string;
@@ -65,6 +67,16 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
         </div>
         <PeriodTabs basePath="/dashboard" active={period.key} from={params.from} to={params.to} />
       </header>
+
+      {!profile && (
+        <Link
+          href="/settings#profile"
+          className="flex items-center justify-between gap-3 rounded-3xl bg-mustard p-4 font-medium text-ink"
+        >
+          <span>Add your name and mobile number so people you share with know it’s you.</span>
+          <span className="shrink-0 rounded-full bg-ink px-4 py-2 text-sm text-surface">Add</span>
+        </Link>
+      )}
 
       {activeLedgers.length === 0 ? (
         <EmptyState

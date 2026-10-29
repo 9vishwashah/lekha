@@ -26,8 +26,10 @@ export async function signInAs(page: Page, who: "A" | "B") {
   await page.waitForFunction(() => Boolean((window as unknown as { Clerk?: { user?: unknown } }).Clerk?.user));
   await page.goto("/dashboard");
   if (page.url().includes("/onboarding")) {
+    await page.getByLabel("Your name").fill(who === "A" ? "Vishwa Test" : "Suraj Test");
+    await page.getByLabel("Mobile number").fill(who === "A" ? "9876543210" : "9123456780");
     await page.getByLabel("Workspace name").fill(`E2E ${who} ${Date.now()}`);
-    await page.getByRole("button", { name: "Create workspace" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
     await page.waitForURL("**/dashboard");
   }
 }

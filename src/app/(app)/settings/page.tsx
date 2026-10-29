@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getWorkspace } from "@/lib/server/context";
+import { getMyProfile, getWorkspace } from "@/lib/server/context";
+import { ProfileForm } from "./profile-form";
 import { PageHeader, SectionTitle, Card } from "@/components/ui/bits";
 import { WorkspaceSettingsForm, MembersPanel } from "./client";
 import { NewWorkspace } from "./new-workspace";
@@ -9,11 +10,12 @@ export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const ctx = await getWorkspace();
-  const [{ data: members }, { data: invites }] = await Promise.all([
+  const [{ data: members }, { data: invites }, profile] = await Promise.all([
     ctx.db.from("workspace_members").select("*").eq("workspace_id", ctx.workspace.id).order("created_at"),
     ctx.isAdmin
       ? ctx.db.from("invitations").select("id, email, role, expires_at, status").eq("workspace_id", ctx.workspace.id).eq("scope", "workspace").eq("status", "pending")
       : Promise.resolve({ data: [] }),
+    getMyProfile(),
   ]);
 
   return (
@@ -38,10 +40,16 @@ export default async function SettingsPage() {
           isAdmin={ctx.isAdmin}
         />
       </section>
+      <section id="profile" className="scroll-mt-24">
+        <SectionTitle className="mb-4">Your profile</SectionTitle>
+        <Card>
+          <ProfileForm name={profile?.full_name ?? ctx.displayName ?? ""} phone={profile?.phone ?? ""} />
+        </Card>
+      </section>
       <section>
         <SectionTitle className="mb-4">Your account</SectionTitle>
         <Card className="flex flex-col gap-3">
-          <p className="text-[15px] text-ink-2">Name, email, password, connected Google account and active sessions are managed by your sign-in provider.</p>
+          <p className="text-[15px] text-ink-2">Email, password, connected Google account and active sessions are managed by your sign-in provider.</p>
           <Link href="/settings/account" className="font-semibold underline underline-offset-4">Manage account</Link>
         </Card>
       </section>

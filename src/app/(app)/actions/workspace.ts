@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { userDb } from "@/lib/supabase/server";
-import { WORKSPACE_COOKIE, getMemberships, getWorkspace, requireUser } from "@/lib/server/context";
+import { WORKSPACE_COOKIE, getMemberships, getMyProfile, getWorkspace, requireUser } from "@/lib/server/context";
 import { type ActionResult, fail } from "@/lib/server/errors";
 import { newToken } from "@/lib/server/tokens";
 import { appUrl } from "@/lib/env";
+import { fullName, mobile } from "@/lib/validation/profile";
 
 const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 365 };
 
@@ -21,24 +22,63 @@ export async function switchWorkspace(workspaceId: string) {
 }
 
 async function viewerIdentity() {
-  const user = await currentUser();
+  const [user, profile] = await Promise.all([currentUser(), getMyProfile()]);
   return {
-    name: user?.fullName || user?.firstName || user?.username || user?.primaryEmailAddress?.emailAddress?.split("@")[0] || "You",
+    name:
+      profile?.full_name ||
+      user?.fullName ||
+      user?.firstName ||
+      user?.username ||
+      user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+      "You",
     email: user?.primaryEmailAddress?.emailAddress ?? null,
   };
 }
 
 export async function createWorkspace(_: unknown, form: FormData): Promise<ActionResult> {
   await requireUser();
-  const parsed = z.string().trim().min(1, "Give your workspace a name").max(120).safeParse(form.get("name"));
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: { name: parsed.error.issues[0].message } };
+  const parsed = z
+    .object({
+      full_name: fullName,
+      phone: mobile,
+      name: z.string().trim().min(1, "Give your workspace a name").max(120),
+    })
+    .safeParse({ full_name: form.get("full_name") ?? "", phone: form.get("phone") ?? "", name: form.get("name") ?? "" });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields",
+      fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message])),
+    };
+  }
   const me = await viewerIdentity();
   const db = await userDb();
-  const { data, error } = await db.rpc("create_workspace", { p_name: parsed.data, p_display_name: me.name, p_email: me.email });
+  const saved = await db.rpc("save_my_profile", { p_full_name: parsed.data.full_name, p_phone: parsed.data.phone });
+  if (saved.error) return fail(saved.error);
+  const { data, error } = await db.rpc("create_workspace", { p_name: parsed.data.name, p_display_name: parsed.data.full_name, p_email: me.email });
   if (error) return fail(error);
   (await cookies()).set(WORKSPACE_COOKIE, data as string, cookieOptions);
   revalidatePath("/", "layout");
   redirect("/dashboard");
+}
+
+export async function saveProfile(_: unknown, form: FormData): Promise<ActionResult> {
+  await requireUser();
+  const parsed = z
+    .object({ full_name: fullName, phone: mobile })
+    .safeParse({ full_name: form.get("full_name") ?? "", phone: form.get("phone") ?? "" });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields",
+      fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message])),
+    };
+  }
+  const db = await userDb();
+  const { error } = await db.rpc("save_my_profile", { p_full_name: parsed.data.full_name, p_phone: parsed.data.phone });
+  if (error) return fail(error);
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Profile saved" };
 }
 
 const settingsSchema = z.object({
