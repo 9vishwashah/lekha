@@ -1,0 +1,208 @@
+"use client";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Sheet } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Field, Input } from "@/components/ui/field";
+import { DateInput } from "@/components/ui/date-picker";
+import { Badge } from "@/components/ui/bits";
+import { Amount } from "@/components/ui/amount";
+import { reverseEntry, voidEntry } from "@/app/(app)/actions/ledgers";
+import { KIND_LABEL } from "@/lib/domain/ledger";
+import { toPaise, formatINR } from "@/lib/domain/money";
+import { formatDate, formatDateTime } from "@/lib/domain/dates";
+import { formatRate } from "@/lib/domain/tax";
+import { toRateMilli } from "@/lib/domain/money";
+import { paymentModeLabel, type TaxDetail, type Txn } from "@/lib/types";
+
+/** Full detail of one entry, with the correction actions this user is allowed to take. */
+export function EntryDetail({
+  txn,
+  tax,
+  names,
+  onClose,
+  onEdit,
+  canEdit,
+  reversed,
+  today,
+  ledgerId,
+}: {
+  txn: Txn | null;
+  tax: TaxDetail | null;
+  names: Record<string, string>;
+  onClose: () => void;
+  onEdit: () => void;
+  canEdit: boolean;
+  reversed: boolean;
+  today: string;
+  ledgerId: string;
+}) {
+  const router = useRouter();
+  const [step, setStep] = useState<"view" | "void" | "reverse">("view");
+  const [reason, setReason] = useState("");
+  const [date, setDate] = useState(today);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const close = () => {
+    setStep("view");
+    setReason("");
+    setError(null);
+    onClose();
+  };
+
+  if (!txn) return <Sheet open={false} onClose={close} title="">{null}</Sheet>;
+
+  const editable = canEdit && txn.status !== "void" && !reversed && (txn.kind === "regular" || txn.kind === "invoice");
+  const reversible = canEdit && txn.status === "posted" && !reversed && ["regular", "invoice", "tax_settlement"].includes(txn.kind);
+  const voidable = canEdit && txn.status !== "void" && !reversed;
+
+  const run = (fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) =>
+    start(async () => {
+      const res = await fn();
+      if (!res.ok) return setError(res.error ?? "Could not save");
+      toast.success(res.message ?? "Saved");
+      router.refresh();
+      close();
+    });
+
+  const row = (label: string, value: React.ReactNode) =>
+    value ? (
+      <div className="flex justify-between gap-4 py-2.5">
+        <dt className="text-ink-2">{label}</dt>
+        <dd className="text-right font-medium">{value}</dd>
+      </div>
+    ) : null;
+
+  return (
+    <Sheet open={Boolean(txn)} onClose={close} title={txn.voucher_no} description={`${KIND_LABEL[txn.kind]} · ${formatDate(txn.txn_date)}`}>
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <Amount
+            value={toPaise(txn.amount)}
+            size="xl"
+            tone={txn.direction === "in" ? "in" : "out"}
+            className={txn.status === "void" ? "line-through opacity-50" : undefined}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            <Badge tone={txn.direction === "in" ? "in" : "out"}>
+              {txn.is_cash ? (txn.direction === "in" ? "Money in · Credit" : "Money out · Debit") : txn.direction === "in" ? "Credit, no cash" : "Debit, no cash"}
+            </Badge>
+            {txn.status !== "posted" && <Badge tone={txn.status === "void" ? "neutral" : "warn"}>{txn.status}</Badge>}
+            {reversed && <Badge>Reversed</Badge>}
+          </div>
+        </div>
+
+        {txn.status === "void" && txn.void_reason && (
+          <p className="rounded-2xl bg-sunken p-3 text-sm">Voided: {txn.void_reason}</p>
+        )}
+
+        <dl className="divide-y divide-line text-[15px]">
+          {row("Description", txn.description)}
+          {row("Payee", txn.counterparty)}
+          {row("Payment mode", paymentModeLabel(txn.payment_mode))}
+          {row("Reference", txn.reference_no)}
+          {row("Notes", txn.notes)}
+          {row("Recorded by", `${names[txn.created_by] ?? "Someone"}${txn.created_via === "collaborator" ? " (collaborator)" : txn.created_via === "import" ? " (import)" : ""}`)}
+          {row("Recorded", formatDateTime(txn.created_at))}
+          {txn.updated_by && row("Last changed by", `${names[txn.updated_by] ?? "Someone"} · ${formatDateTime(txn.updated_at)}`)}
+        </dl>
+
+        {tax && (
+          <section className="rounded-[24px] bg-lavender/25 p-4 ring-1 ring-inset ring-lavender/60">
+            <h3 className="mb-2 font-semibold">Tax breakdown{tax.invoice_no ? ` · Invoice ${tax.invoice_no}` : ""}</h3>
+            <dl className="num grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+              <dt className="text-ink-2">Taxable</dt>
+              <dd className="text-right">{formatINR(toPaise(tax.taxable_amount))}</dd>
+              {tax.gst_type === "intra" && (
+                <>
+                  <dt className="text-ink-2">CGST</dt>
+                  <dd className="text-right">{formatINR(toPaise(tax.cgst_amount))}</dd>
+                  <dt className="text-ink-2">SGST</dt>
+                  <dd className="text-right">{formatINR(toPaise(tax.sgst_amount))}</dd>
+                </>
+              )}
+              {tax.gst_type === "inter" && (
+                <>
+                  <dt className="text-ink-2">IGST</dt>
+                  <dd className="text-right">{formatINR(toPaise(tax.igst_amount))}</dd>
+                </>
+              )}
+              <dt className="text-ink-2">GST {tax.gst_applicable ? formatRate(toRateMilli(tax.gst_rate)) : ""}</dt>
+              <dd className="text-right">{formatINR(toPaise(tax.gst_amount))}</dd>
+              <dt className="text-ink-2">Gross invoice</dt>
+              <dd className="text-right font-medium">{formatINR(toPaise(tax.gross_amount))}</dd>
+              <dt className="text-ink-2">
+                TDS {tax.tds_applicable ? `${formatRate(toRateMilli(tax.tds_rate))} on ${tax.tds_base === "gross" ? "gross" : "taxable"}` : ""}
+                {tax.tds_section ? ` · ${tax.tds_section}` : ""}
+              </dt>
+              <dd className="text-right">− {formatINR(toPaise(tax.tds_amount))}</dd>
+              <dt className="font-semibold">After TDS</dt>
+              <dd className="text-right font-semibold">{formatINR(toPaise(tax.net_amount))}</dd>
+            </dl>
+          </section>
+        )}
+
+        {step === "view" && (editable || reversible || voidable) && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            {editable && <Button variant="primary" onClick={onEdit}>Edit</Button>}
+            {reversible && (
+              <Button variant="secondary" onClick={() => setStep("reverse")}>
+                Reverse
+              </Button>
+            )}
+            {voidable && (
+              <Button variant="secondary" onClick={() => setStep("void")}>
+                Void
+              </Button>
+            )}
+          </div>
+        )}
+        {step === "view" && txn.kind !== "regular" && txn.kind !== "invoice" && txn.kind !== "reversal" && (
+          <p className="text-[13px] text-ink-3">
+            This entry comes from {txn.kind === "expense" ? "an expense" : txn.kind === "tax_settlement" ? "a tax payment" : "an advance"}. Change
+            it there so both records stay in step.
+          </p>
+        )}
+
+        {step !== "view" && (
+          <form
+            className="flex flex-col gap-4 rounded-[24px] bg-sunken p-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              run(() => (step === "void" ? voidEntry(txn.id, ledgerId, reason) : reverseEntry(txn.id, ledgerId, reason, date)));
+            }}
+          >
+            <p className="text-[15px]">
+              {step === "void"
+                ? "Voiding keeps this entry in the history, crossed out, and removes it from every balance."
+                : "Reversing posts an equal and opposite entry. Both stay visible and cancel each other out."}
+            </p>
+            <Field label="Reason">
+              {(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} required maxLength={300} autoFocus placeholder="Entered twice" />}
+            </Field>
+            {step === "reverse" && (
+              <Field label="Reversal date">
+                {(p) => <DateInput {...p} value={date} onChange={setDate} required />}
+              </Field>
+            )}
+            {error && (
+              <p role="alert" className="font-medium text-out">
+                {error}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setStep("view")}>
+                Cancel
+              </Button>
+              <Button type="submit" variant={step === "void" ? "danger" : "primary"} disabled={pending || !reason.trim()} className="flex-1">
+                {pending ? "Saving…" : step === "void" ? "Void entry" : "Post reversal"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+    </Sheet>
+  );
+}

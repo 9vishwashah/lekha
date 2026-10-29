@@ -1,0 +1,351 @@
+"use server";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { currentUser } from "@clerk/nextjs/server";
+import { z } from "zod";
+import { userDb } from "@/lib/supabase/server";
+import { getWorkspace, requireUser } from "@/lib/server/context";
+import { type ActionResult, fail } from "@/lib/server/errors";
+import { newToken, openToken, sealToken } from "@/lib/server/tokens";
+import { appUrl } from "@/lib/env";
+
+const uuid = z.string().uuid();
+const money = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/,/g, ""))
+  .pipe(z.string().regex(/^\d{1,12}(\.\d{1,2})?$/, "Enter an amount like 1500 or 1500.50"));
+const signedMoney = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/,/g, ""))
+  .pipe(z.string().regex(/^-?\d{0,12}(\.\d{1,2})?$/, "Enter an amount like 1500 or -1500"));
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date");
+const optionalText = (max: number) => z.string().trim().max(max).optional().transform((v) => v || undefined);
+const rate = z.string().trim().regex(/^\d{1,2}(\.\d{1,3})?$/, "Enter a rate like 18 or 0.1");
+
+function fieldErrors(error: z.ZodError) {
+  return Object.fromEntries(error.issues.map((i) => [i.path.join("."), i.message]));
+}
+
+function refreshLedger(id: string) {
+  revalidatePath(`/ledgers/${id}`);
+  revalidatePath("/ledgers");
+  revalidatePath("/dashboard");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ledgers
+// ---------------------------------------------------------------------------------------------
+const ledgerSchema = z.object({
+  name: z.string().trim().min(1, "Give the ledger a name").max(120),
+  ledger_type: z.enum(["basic", "taxation", "personal"]),
+  perspective: z.enum(["cashbook", "party"]).optional(),
+  contractor_id: uuid.optional().or(z.literal("")).transform((v) => v || undefined),
+  reference_no: optionalText(60),
+  opening_balance: signedMoney.optional().or(z.literal("")),
+  opening_balance_date: isoDate.optional().or(z.literal("")),
+  description: optionalText(500),
+  gst_mode: z.enum(["intra", "inter"]).optional(),
+  color: z.enum(["mustard", "lavender", "tea", "pink", "tangerine", "sky", "red", "ink"]).optional(),
+  participant_client_ids: z.array(uuid).max(30).optional(),
+});
+
+export async function createLedger(_: unknown, form: FormData): Promise<ActionResult> {
+  const ctx = await getWorkspace();
+  const raw = Object.fromEntries(form);
+  const parsed = ledgerSchema.safeParse({
+    ...raw,
+    participant_client_ids: form.getAll("participant_client_ids").map(String).filter(Boolean),
+  });
+  if (!parsed.success) return { ok: false, error: "Check the highlighted fields", fieldErrors: fieldErrors(parsed.error) };
+  const user = await currentUser();
+  const ownerName = user?.firstName || user?.fullName || user?.username || "You";
+  if (parsed.data.ledger_type === "personal" && !parsed.data.participant_client_ids?.length) {
+    return { ok: false, error: "Choose at least one other person", fieldErrors: { participant_client_ids: "Choose at least one other person" } };
+  }
+  const { data, error } = await ctx.db.rpc("create_ledger", {
+    p: { ...parsed.data, workspace_id: ctx.workspace.id, owner_name: ownerName },
+  });
+  if (error) return fail(error);
+  revalidatePath("/ledgers");
+  redirect(`/ledgers/${data}`);
+}
+
+export async function updateLedger(ledgerId: string, _: unknown, form: FormData): Promise<ActionResult> {
+  await requireUser();
+  const parsed = ledgerSchema.partial().safeParse(Object.fromEntries(form));
+  if (!parsed.success) return { ok: false, error: "Check the highlighted fields", fieldErrors: fieldErrors(parsed.error) };
+  const db = await userDb();
+  const p: Record<string, unknown> = { ...parsed.data };
+  delete p.ledger_type;
+  for (const key of ["contractor_id", "reference_no", "description", "opening_balance_date"]) if (!(key in p)) p[key] = "";
+  const { error } = await db.rpc("update_ledger", { p_ledger: uuid.parse(ledgerId), p });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Ledger updated" };
+}
+
+export async function setLedgerStatus(ledgerId: string, status: "active" | "archived"): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("set_ledger_status", { p_ledger: uuid.parse(ledgerId), p_status: status });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: status === "archived" ? "Ledger archived" : "Ledger restored" };
+}
+
+export async function addParticipant(ledgerId: string, clientId: string): Promise<ActionResult> {
+  const parsed = uuid.safeParse(clientId);
+  if (!parsed.success) return { ok: false, error: "Choose someone from your client accounts" };
+  const db = await userDb();
+  const { error } = await db.rpc("add_ledger_participant", { p_ledger: uuid.parse(ledgerId), p_client: parsed.data });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Added to this account" };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Entries
+// ---------------------------------------------------------------------------------------------
+const taxSchema = z.object({
+  taxable_amount: money,
+  gst_applicable: z.boolean(),
+  gst_type: z.enum(["intra", "inter"]),
+  gst_rate: rate.optional().or(z.literal("")),
+  tds_applicable: z.boolean(),
+  tds_rate: rate.optional().or(z.literal("")),
+  tds_base: z.enum(["taxable", "gross"]),
+  tds_section: optionalText(20),
+  invoice_no: optionalText(60),
+  invoice_date: isoDate.optional().or(z.literal("")),
+  tax_status: z.enum(["pending", "paid", "not_applicable"]).optional(),
+});
+
+const entryBase = z.object({
+    ledger_id: uuid,
+    kind: z.enum(["regular", "invoice"]),
+    direction: z.enum(["in", "out"], { message: "Choose Money In or Money Out" }),
+    amount: money.optional(),
+    txn_date: isoDate,
+    description: optionalText(500),
+    counterparty: optionalText(160),
+    payment_mode: z.enum(["cash", "upi", "bank_transfer", "cheque", "card", "other"]).optional().or(z.literal("")),
+    reference_no: optionalText(80),
+    notes: optionalText(2000),
+    status: z.enum(["draft", "posted"]).default("posted"),
+    idempotency_key: z.string().min(8).max(120).optional(),
+    tax: taxSchema.nullable().optional(),
+});
+
+const entrySchema = entryBase
+  .refine((v) => v.kind === "invoice" || !!v.amount, { message: "Enter an amount", path: ["amount"] })
+  .refine((v) => v.kind === "regular" || !!v.tax, { message: "A bill needs its tax details", path: ["tax"] });
+
+export type EntryInput = z.input<typeof entrySchema>;
+
+export async function postEntry(input: EntryInput): Promise<ActionResult<{ voucher: string }>> {
+  await requireUser();
+  const parsed = entrySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: fieldErrors(parsed.error) };
+  const db = await userDb();
+  const { data, error } = await db.rpc("post_transaction", { p: parsed.data });
+  if (error) return fail(error);
+  refreshLedger(parsed.data.ledger_id);
+  const res = data as { voucher_no: string; duplicate: boolean };
+  return { ok: true, data: { voucher: res.voucher_no }, message: res.duplicate ? "Already saved" : `Saved as ${res.voucher_no}` };
+}
+
+export async function amendEntry(id: string, ledgerId: string, input: Partial<Omit<EntryInput, "kind">> & { kind?: undefined }): Promise<ActionResult> {
+  await requireUser();
+  const parsed = entryBase.partial().omit({ ledger_id: true, kind: true }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: fieldErrors(parsed.error) };
+  const db = await userDb();
+  const { error } = await db.rpc("amend_transaction", { p_id: uuid.parse(id), p: parsed.data });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Entry updated" };
+}
+
+export async function voidEntry(id: string, ledgerId: string, reason: string): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("void_transaction", { p_id: uuid.parse(id), p_reason: reason });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Entry voided" };
+}
+
+export async function reverseEntry(id: string, ledgerId: string, reason: string, date: string): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("reverse_transaction", { p_id: uuid.parse(id), p_reason: reason, p_date: isoDate.parse(date) });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Reversal posted" };
+}
+
+const settlementSchema = z.object({
+  ledger_id: uuid,
+  txn_date: isoDate,
+  tax_type: z.enum(["gst", "tds", "other"]),
+  amount: money,
+  account_mapping: z.enum(["gst_payable", "gst_input_credit", "tds_payable", "other"]).optional(),
+  period_month: isoDate.optional().or(z.literal("")),
+  challan_no: optionalText(60),
+  payment_mode: z.enum(["cash", "upi", "bank_transfer", "cheque", "card", "other"]).optional().or(z.literal("")),
+  description: optionalText(500),
+  settlement_status: z.enum(["pending", "completed"]).optional(),
+  idempotency_key: z.string().min(8).max(120).optional(),
+});
+
+export async function recordTaxPayment(input: z.input<typeof settlementSchema>): Promise<ActionResult> {
+  const parsed = settlementSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: fieldErrors(parsed.error) };
+  const db = await userDb();
+  const { error } = await db.rpc("record_tax_settlement", { p: parsed.data });
+  if (error) return fail(error);
+  refreshLedger(parsed.data.ledger_id);
+  revalidatePath("/reports/tax");
+  return { ok: true, message: "Tax payment recorded" };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sharing
+// ---------------------------------------------------------------------------------------------
+const shareOptions = z.object({
+  show_balance: z.boolean(),
+  show_running_balance: z.boolean(),
+  show_tax: z.boolean(),
+  show_reference: z.boolean(),
+  show_counterparty: z.boolean(),
+  expires_at: z.string().datetime({ offset: true }).nullable().optional(),
+});
+
+export async function createShareLink(ledgerId: string, options: z.input<typeof shareOptions>): Promise<ActionResult<{ url: string }>> {
+  const parsed = shareOptions.safeParse(options);
+  if (!parsed.success) return { ok: false, error: "Check the sharing options" };
+  const token = newToken();
+  const db = await userDb();
+  const { error } = await db.rpc("create_share_link", {
+    p_ledger: uuid.parse(ledgerId),
+    p_token: token,
+    p_ciphertext: sealToken(token),
+    p: parsed.data,
+  });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, data: { url: `${appUrl()}/s/${token}` }, message: "Share link is live" };
+}
+
+export async function updateShareLink(id: string, ledgerId: string, options: z.input<typeof shareOptions>): Promise<ActionResult> {
+  const parsed = shareOptions.partial().safeParse(options);
+  if (!parsed.success) return { ok: false, error: "Check the sharing options" };
+  const db = await userDb();
+  const { error } = await db.rpc("update_share_link", { p_id: uuid.parse(id), p: parsed.data });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Sharing updated" };
+}
+
+export async function revokeShareLink(id: string, ledgerId: string): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("revoke_share_link", { p_id: uuid.parse(id) });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Link turned off. It no longer opens." };
+}
+
+export interface ShareState {
+  link: {
+    id: string;
+    token_hint: string;
+    show_balance: boolean;
+    show_running_balance: boolean;
+    show_tax: boolean;
+    show_reference: boolean;
+    show_counterparty: boolean;
+    expires_at: string | null;
+    last_accessed_at: string | null;
+    created_at: string;
+  } | null;
+  url: string | null;
+  expired: boolean;
+}
+
+export async function getShareState(ledgerId: string): Promise<ShareState> {
+  const db = await userDb();
+  const { data } = await db
+    .from("share_links")
+    .select("id, token_hint, show_balance, show_running_balance, show_tax, show_reference, show_counterparty, expires_at, last_accessed_at, created_at")
+    .eq("ledger_id", uuid.parse(ledgerId))
+    .is("revoked_at", null)
+    .maybeSingle();
+  if (!data) return { link: null, url: null, expired: false };
+  const expired = Boolean(data.expires_at && new Date(data.expires_at) <= new Date());
+  return { link: data, url: expired ? null : await getShareUrl(ledgerId), expired };
+}
+
+/** Rebuilds the active link for the owner (decrypting the stored token on the server). */
+export async function getShareUrl(ledgerId: string): Promise<string | null> {
+  const db = await userDb();
+  const { data } = await db.rpc("share_link_secret", { p_ledger: uuid.parse(ledgerId) });
+  const token = openToken(data as string | null);
+  return token ? `${appUrl()}/s/${token}` : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Collaborators
+// ---------------------------------------------------------------------------------------------
+const permissions = z.object({
+  can_create: z.boolean(),
+  can_edit_own: z.boolean(),
+  can_edit_all: z.boolean(),
+  can_attach: z.boolean(),
+  can_view_tax: z.boolean(),
+});
+
+export async function inviteCollaborator(
+  ledgerId: string,
+  input: z.input<typeof permissions> & { email?: string; participant_id?: string },
+): Promise<ActionResult<{ url: string }>> {
+  const parsed = permissions
+    .extend({
+      email: z.string().trim().email().max(200).optional().or(z.literal("")),
+      participant_id: uuid.optional().or(z.literal("")),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const token = newToken();
+  const db = await userDb();
+  const { error } = await db.rpc("create_invitation", {
+    p_token: token,
+    p: { ...parsed.data, scope: "ledger", ledger_id: uuid.parse(ledgerId) },
+  });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, data: { url: `${appUrl()}/invite/${token}` }, message: "Invitation link created" };
+}
+
+export async function updateCollaborator(id: string, ledgerId: string, input: Partial<z.input<typeof permissions>>): Promise<ActionResult> {
+  const parsed = permissions.partial().safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Check the permissions" };
+  const db = await userDb();
+  const { error } = await db.rpc("update_collaborator", { p_id: uuid.parse(id), p: parsed.data });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Permissions updated" };
+}
+
+export async function revokeCollaborator(id: string, ledgerId: string): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("revoke_collaborator", { p_id: uuid.parse(id) });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Access removed" };
+}
+
+export async function revokeLedgerInvitation(id: string, ledgerId: string): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("revoke_invitation", { p_id: uuid.parse(id) });
+  if (error) return fail(error);
+  refreshLedger(ledgerId);
+  return { ok: true, message: "Invitation cancelled" };
+}

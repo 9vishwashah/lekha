@@ -1,0 +1,21 @@
+# Local development with the Supabase CLI (`supabase start`). Only the parts Lekha relies on are listed.
+project_id = "lekha"
+
+[api]
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+
+[db]
+major_version = 17
+
+[realtime]
+enabled = true
+
+[storage]
+enabled = true
+
+# Clerk as a third-party auth provider (official integration; no JWT templates).
+# Replace the domain with your Clerk Frontend API domain, e.g. "your-app.clerk.accounts.dev".
+[auth.third_party.clerk]
+enabled = true
+domain = "your-app.clerk.accounts.dev"
