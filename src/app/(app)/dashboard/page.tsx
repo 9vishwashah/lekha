@@ -1,7 +1,8 @@
 import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock } from "lucide-react";
-import { getMyProfile, getWorkspace } from "@/lib/server/context";
+import { getConnectionRequests, getMyProfile, getWorkspace } from "@/lib/server/context";
+import { ConnectionRequests } from "@/components/app/connection-requests";
 import { advancesWithPositions, expenseTotals, ledgerBalances } from "@/lib/server/workspace-data";
 import { loadSharedAccountRows, peoplePositions } from "@/lib/server/people";
 import { PeriodTabs, resolvePeriod } from "@/components/app/period-tabs";
@@ -19,7 +20,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
   const params = (await props.searchParams) as Record<string, string>;
   const period = resolvePeriod(params, ctx.workspace.fy_start_month);
   // A single parallel round; no calls to the sign-in provider while rendering.
-  const [balances, advances, expenses, clients, recent, sharedRows, profile] = await Promise.all([
+  const [balances, advances, expenses, clients, recent, sharedRows, profile, requests] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id, period.range),
     advancesWithPositions(ctx.db, ctx.workspace.id, period.today),
     expenseTotals(ctx.db, ctx.workspace.id, period.range),
@@ -32,6 +33,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
       .limit(8),
     loadSharedAccountRows(ctx.db),
     getMyProfile(),
+    getConnectionRequests(),
   ]);
 
   const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
@@ -68,6 +70,8 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
         </div>
         <PeriodTabs basePath="/dashboard" active={period.key} from={params.from} to={params.to} />
       </header>
+
+      <ConnectionRequests requests={requests} />
 
       {!profile && (
         <Link

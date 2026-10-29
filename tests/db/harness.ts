@@ -50,10 +50,14 @@ export async function applyFrom(db: PGlite, from: string) {
 
 export type Db = Awaited<ReturnType<typeof createDb>>;
 
+/** A signed-in user: their Clerk id, or the id plus the verified email the session token carries. */
+export type Who = string | { id: string; email: string } | null;
+
 /** Runs fn as a signed-in Clerk user (or anon when userId is null), inside a transaction. */
-export async function as<T>(db: Db, userId: string | null, fn: (q: Query) => Promise<T>): Promise<T> {
+export async function as<T>(db: Db, userId: Who, fn: (q: Query) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
-    const claims = userId ? JSON.stringify({ sub: userId, role: "authenticated" }) : "";
+    const who = typeof userId === "string" ? { sub: userId } : userId ? { sub: userId.id, email: userId.email } : null;
+    const claims = who ? JSON.stringify({ ...who, role: "authenticated" }) : "";
     await tx.query(`select set_config('request.jwt.claims', $1, true)`, [claims]);
     await tx.exec(`set local role ${userId ? "authenticated" : "anon"}`);
     const q: Query = async (sql, params) => (await tx.query(sql, params)).rows as never;
@@ -64,7 +68,7 @@ export async function as<T>(db: Db, userId: string | null, fn: (q: Query) => Pro
 export type Query = <R = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<R[]>;
 
 /** Calls an RPC that returns a single value. */
-export async function rpc<T = unknown>(db: Db, userId: string | null, sql: string, params: unknown[] = []): Promise<T> {
+export async function rpc<T = unknown>(db: Db, userId: Who, sql: string, params: unknown[] = []): Promise<T> {
   return as(db, userId, async (q) => {
     const rows = await q<{ r: T }>(`select ${sql} as r`, params);
     return rows[0]?.r as T;

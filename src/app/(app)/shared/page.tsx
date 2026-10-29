@@ -1,4 +1,5 @@
-import { getCollaborations, getMemberships } from "@/lib/server/context";
+import { getCollaborations, getConnectionRequests, getMemberships } from "@/lib/server/context";
+import { ConnectionRequests } from "@/components/app/connection-requests";
 import { EmptyState, PageHeader } from "@/components/ui/bits";
 import { WalletCard } from "@/components/app/wallet-card";
 import { LinkButton } from "@/components/ui/button";
@@ -7,12 +8,15 @@ import { relativeTime } from "@/lib/domain/dates";
 export const metadata = { title: "Shared with me" };
 
 export default async function SharedPage() {
-  const [shared, memberships] = await Promise.all([getCollaborations(), getMemberships()]);
+  const [shared, memberships, requests] = await Promise.all([getCollaborations(), getMemberships(), getConnectionRequests()]);
   return (
     <div>
       <PageHeader title="Shared with me">
         <p className="mt-3 max-w-2xl text-ink-2">Ledgers other people invited you to. You see only these ledgers, never the rest of their workspace.</p>
       </PageHeader>
+      <div className="mb-6">
+        <ConnectionRequests requests={requests} />
+      </div>
       {shared.length === 0 ? (
         <EmptyState
           title="Nothing shared with you yet"

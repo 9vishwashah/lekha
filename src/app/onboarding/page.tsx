@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import { Logo } from "@/components/app/logo";
-import { getMyProfile, loadMemberships } from "@/lib/server/context";
+import Link from "next/link";
+import { getCollaborations, getConnectionRequests, getMyProfile, loadMemberships } from "@/lib/server/context";
+import { ConnectionRequests } from "@/components/app/connection-requests";
 import { inviteReturnPath } from "@/lib/server/shared";
 import { ServiceProblem } from "@/components/app/service-problem";
 import { OnboardingForm } from "./form";
@@ -20,7 +22,7 @@ export default async function Onboarding(props: PageProps<"/onboarding">) {
   const loaded = await loadMemberships();
   if (loaded.problem) return <ServiceProblem kind={loaded.problem.kind} code={loaded.problem.code} />;
   const hasWorkspace = loaded.memberships.length > 0;
-  const [user, profile] = await Promise.all([currentUser(), getMyProfile()]);
+  const [user, profile, requests, shared] = await Promise.all([currentUser(), getMyProfile(), getConnectionRequests(), getCollaborations()]);
   if (next && profile) redirect(next);
   if (!next && hasWorkspace) redirect("/dashboard");
   const knownName = profile?.full_name || user?.fullName || [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "";
@@ -36,6 +38,17 @@ export default async function Onboarding(props: PageProps<"/onboarding">) {
             : "Your workspace is your private book. Clients, ledgers and expenses live here, and nobody else sees them unless you invite them."}
         </p>
       </div>
+      {/* Someone who signed up because a person sent them a connect request answers it here first. */}
+      <ConnectionRequests requests={requests} />
+      {!next && shared.length > 0 && (
+        <p className="-mt-4 text-[15px] text-ink-2">
+          Only here for what’s shared with you?{" "}
+          <Link href="/shared" className="font-semibold text-ink underline underline-offset-4">
+            Skip to Shared with me
+          </Link>
+          . You can set up your own books any time.
+        </p>
+      )}
       <OnboardingForm defaultName={knownName} defaultPhone={profile?.phone ?? ""} next={next} askWorkspace={!hasWorkspace} />
     </div>
   );

@@ -23,12 +23,14 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
   const params = (await props.searchParams) as Record<string, string>;
   const show = FILTERS.some((f) => f.key === params.show) ? params.show : "all";
   const q = (params.q ?? "").trim().toLowerCase();
-  const [contractors, balances, advances, sharedRows] = await Promise.all([
+  const [contractors, balances, advances, sharedRows, requests] = await Promise.all([
     listContractors(ctx.db, ctx.workspace.id),
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, todayISO()),
     loadSharedAccountRows(ctx.db),
+    ctx.db.from("client_connections").select("contractor_id").eq("workspace_id", ctx.workspace.id).eq("status", "pending"),
   ]);
+  const requested = new Set((requests.data ?? []).map((r) => r.contractor_id as string));
   const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
   const visible = contractors
     .filter((c) => (show === "inactive" ? !c.is_active : c.is_active && (show === "all" || c.kind === show)))
@@ -108,7 +110,7 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
                         Advance <Money value={adv} className="font-semibold" />
                       </Badge>
                     )}
-                    {c.linked_user_id && <Badge tone="in">On Lekha</Badge>}
+                    {c.linked_user_id ? <Badge tone="in">Connected</Badge> : requested.has(c.id) && <Badge tone="warn">Request sent</Badge>}
                     {c.merged_into && <Badge>Merged</Badge>}
                   </div>
                 </IntentLink>

@@ -103,6 +103,26 @@ export const getMyProfile = cache(async (): Promise<MyProfile | null> => {
   return (data as MyProfile | null) ?? null;
 });
 
+export interface ConnectionRequest {
+  id: string;
+  from_name: string;
+  business: string;
+  as_name: string;
+  created_at: string;
+}
+
+/**
+ * Connect requests waiting for this user, matched on the verified email in their session token.
+ * Empty (not an error) when the token carries no email or the migration is not applied yet.
+ */
+export const getConnectionRequests = cache(async (): Promise<ConnectionRequest[]> => {
+  await requireUser();
+  const db = await userDb();
+  const { data, error } = await db.rpc("my_connection_requests");
+  if (error) return [];
+  return (data as ConnectionRequest[] | null) ?? [];
+});
+
 /** Ledgers other people shared with this user (as a collaborator, outside their own workspaces). */
 export const getCollaborations = cache(async () => {
   const userId = await requireUser();

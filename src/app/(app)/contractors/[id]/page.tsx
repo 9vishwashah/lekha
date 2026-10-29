@@ -14,6 +14,8 @@ import { Avatar, Badge, Card, SectionTitle } from "@/components/ui/bits";
 import { LinkButton } from "@/components/ui/button";
 import { WalletCard } from "@/components/app/wallet-card";
 import { ContractorActions } from "./actions";
+import { ConnectCard } from "./connect";
+import { whatsappNumber } from "@/lib/server/share-card";
 
 export default async function ContractorPage(props: PageProps<"/contractors/[id]">) {
   const ctx = await getWorkspace();
@@ -21,7 +23,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   if (!isUuid(id)) notFound();
   const today = todayISO();
   // One parallel round; this client comes from the same list the merge picker needs.
-  const [balances, advances, all, recent, taxIds, sharedRows] = await Promise.all([
+  const [balances, advances, all, recent, taxIds, sharedRows, request] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, today),
     listContractors(ctx.db, ctx.workspace.id),
@@ -34,6 +36,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       .limit(10),
     ctx.canWrite ? ctx.db.rpc("contractor_tax_ids", { p_contractor: id }) : Promise.resolve({ data: null }),
     loadSharedAccountRows(ctx.db),
+    ctx.db.from("client_connections").select("email, created_at").eq("contractor_id", id).eq("status", "pending").maybeSingle(),
   ]);
   const c = all.find((x) => x.id === id);
   if (!c) notFound();
@@ -92,8 +95,14 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
             <Plus className="size-4" /> Shared account
           </LinkButton>
         )}
-        {c.linked_user_id && <Badge tone="in">Has joined Lekha</Badge>}
       </div>
+
+      <ConnectCard
+        contractor={{ id: c.id, name: c.name, email: c.email, linked_user_id: c.linked_user_id }}
+        pending={(request.data as { email: string; created_at: string } | null) ?? null}
+        canWrite={ctx.canWrite && c.is_active}
+        whatsappTo={whatsappNumber(c.phone)}
+      />
 
       <div className="flex flex-wrap gap-2 text-[15px]">
         {c.phone && (
