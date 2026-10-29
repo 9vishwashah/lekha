@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { IntentLink } from "@/components/app/intent-link";
 import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { Amount } from "@/components/ui/amount";
@@ -33,7 +33,7 @@ export function WalletCard({
 }) {
   const w = walletOf(color);
   return (
-    <Link
+    <IntentLink
       href={href}
       className={cn(
         "group relative flex min-h-56 flex-col justify-between overflow-hidden rounded-[var(--radius-card)] p-5 transition-transform active:scale-[0.99] sm:p-6",
@@ -70,6 +70,6 @@ export function WalletCard({
           </div>
         )}
       </div>
-    </Link>
+    </IntentLink>
   );
 }

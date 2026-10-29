@@ -31,6 +31,9 @@ export interface SharedPayload {
 
 export const isTokenShape = (token: string) => /^[A-Za-z0-9_-]{32,128}$/.test(token);
 
+/** An invitation page to return to after setup, or null. Nothing else is accepted as a return path. */
+export const inviteReturnPath = (v: unknown) => (typeof v === "string" && v.startsWith("/invite/") && isTokenShape(v.slice(8)) ? v : null);
+
 export async function loadShared(token: string): Promise<SharedPayload | null> {
   if (!isTokenShape(token)) return null;
   const { data, error } = await anonDb().rpc("get_shared_ledger", { p_token: token });

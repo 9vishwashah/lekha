@@ -1,4 +1,5 @@
 "use client";
+import { ExportLink } from "@/components/app/export-link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -179,12 +180,12 @@ export function PersonalScreen({
             <Share2 className="size-4" /> Share
           </Button>
         )}
-        <a href={`/api/export/ledger/${ledger.id}?format=pdf`} className="inline-flex h-14 items-center gap-2 rounded-full px-5 text-[15px] font-medium hover:bg-sunken">
+        <ExportLink href={`/api/export/ledger/${ledger.id}?format=pdf`} className="inline-flex h-14 items-center gap-2 rounded-full px-5 text-[15px] font-medium hover:bg-sunken">
           <Download className="size-4" /> PDF
-        </a>
-        <a href={`/api/export/ledger/${ledger.id}?format=xlsx`} className="inline-flex h-14 items-center gap-2 rounded-full px-5 text-[15px] font-medium hover:bg-sunken">
+        </ExportLink>
+        <ExportLink href={`/api/export/ledger/${ledger.id}?format=xlsx`} className="inline-flex h-14 items-center gap-2 rounded-full px-5 text-[15px] font-medium hover:bg-sunken">
           <Download className="size-4" /> Excel
-        </a>
+        </ExportLink>
         {access.canManage && (
           <Link href={`/ledgers/${ledger.id}/settings`} className="inline-flex h-14 items-center gap-2 rounded-full px-5 text-[15px] font-medium hover:bg-sunken">
             <Settings2 className="size-4" /> People & settings

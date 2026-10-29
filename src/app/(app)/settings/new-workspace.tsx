@@ -10,12 +10,14 @@ export function NewWorkspace() {
   return (
     <Card>
       <form action={action} className="flex flex-col gap-4">
-        <p className="text-[15px] text-ink-2">Each workspace is a separate, private book with its own contractors, ledgers and members.</p>
-        <Field label="New workspace name" error={state && !state.ok ? state.error : undefined}>
-          {(p) => <Input {...p} name="name" required maxLength={120} />}
+        <p className="text-[15px] text-ink-2">
+          Each workspace is a separate, private book with its own clients, ledgers and members. Switch between them from the workspace name at the top.
+        </p>
+        <Field label="New workspace name" error={state && !state.ok ? (state.fieldErrors?.name ?? state.error) : undefined}>
+          {(p) => <Input {...p} name="name" required maxLength={120} placeholder="e.g. Shah Traders" />}
         </Field>
         <Button type="submit" variant="secondary" disabled={pending} className="self-start">
-          Create workspace
+          {pending ? "Creating…" : "Create workspace"}
         </Button>
       </form>
     </Card>

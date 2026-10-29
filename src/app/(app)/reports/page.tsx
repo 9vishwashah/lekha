@@ -1,3 +1,4 @@
+import { ExportLink } from "@/components/app/export-link";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
@@ -44,9 +45,9 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {reports.map((r) =>
           r.download ? (
-            <a key={r.title} href={r.href} className={cn("group flex min-h-48 flex-col justify-between rounded-[var(--radius-card)] p-5", r.color)}>
+            <ExportLink key={r.title} href={r.href} keepContent className={cn("group flex min-h-48 flex-col justify-between rounded-[var(--radius-card)] p-5", r.color)}>
               <ReportCard title={r.title} body={r.body} />
-            </a>
+            </ExportLink>
           ) : (
             <Link key={r.title} href={r.href} className={cn("group flex min-h-48 flex-col justify-between rounded-[var(--radius-card)] p-5", r.color)}>
               <ReportCard title={r.title} body={r.body} />
@@ -59,12 +60,12 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
         <SectionTitle
           action={
             <span className="flex gap-1">
-              <a href={`/api/export/report?type=balances&format=xlsx&${qs}`} className="inline-flex h-10 items-center rounded-full px-3 text-sm font-medium hover:bg-sunken">
+              <ExportLink href={`/api/export/report?type=balances&format=xlsx&${qs}`} className="inline-flex h-10 items-center rounded-full px-3 text-sm font-medium hover:bg-sunken">
                 Excel
-              </a>
-              <a href={`/api/export/report?type=balances&format=csv&${qs}`} className="inline-flex h-10 items-center rounded-full px-3 text-sm font-medium hover:bg-sunken">
+              </ExportLink>
+              <ExportLink href={`/api/export/report?type=balances&format=csv&${qs}`} className="inline-flex h-10 items-center rounded-full px-3 text-sm font-medium hover:bg-sunken">
                 CSV
-              </a>
+              </ExportLink>
             </span>
           }
         >
@@ -105,9 +106,9 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
                   <td className="px-3 py-3 text-right"><Money value={e.periodStatement?.totals.moneyOut ?? 0n} tone="out" /></td>
                   <td className="px-3 py-3 text-right font-semibold"><Money value={e.statement?.closing ?? 0n} /></td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm">
-                    <a className="font-medium underline-offset-2 hover:underline" href={`/api/export/ledger/${e.ledger.id}?format=pdf&${qs}`}>PDF</a>
+                    <ExportLink className="font-medium underline-offset-2 hover:underline" href={`/api/export/ledger/${e.ledger.id}?format=pdf&${qs}`}>PDF</ExportLink>
                     {" · "}
-                    <a className="font-medium underline-offset-2 hover:underline" href={`/api/export/ledger/${e.ledger.id}?format=xlsx&${qs}`}>Excel</a>
+                    <ExportLink className="font-medium underline-offset-2 hover:underline" href={`/api/export/ledger/${e.ledger.id}?format=xlsx&${qs}`}>Excel</ExportLink>
                   </td>
                 </tr>
               ))}

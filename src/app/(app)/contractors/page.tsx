@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { IntentLink } from "@/components/app/intent-link";
+import { FilterChips } from "@/components/app/pending-nav";
 import { getWorkspace } from "@/lib/server/context";
 import { listContractors } from "@/lib/server/queries";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
@@ -7,7 +8,6 @@ import { Avatar, Badge, EmptyState, PageHeader } from "@/components/ui/bits";
 import { Money } from "@/components/ui/amount";
 import { AddContractorButton } from "./add-button";
 import { todayISO } from "@/lib/domain/dates";
-import { cn } from "@/lib/cn";
 
 export const metadata = { title: "Client Accounts" };
 
@@ -65,19 +65,11 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
             className="h-12 w-full rounded-full bg-surface px-5 text-[16px] ring-1 ring-inset ring-line focus:outline-none focus:ring-2 focus:ring-ink"
           />
         </form>
-        <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0" aria-label="Show">
-          <div className="flex gap-1 rounded-full bg-sunken p-1">
-            {FILTERS.map((f) => (
-              <Link
-                key={f.key}
-                href={qs(f.key === "all" ? {} : { show: f.key })}
-                className={cn("inline-flex h-10 items-center whitespace-nowrap rounded-full px-4 text-sm font-medium", show === f.key ? "bg-ink text-surface" : "text-ink-2")}
-              >
-                {f.label}
-              </Link>
-            ))}
-          </div>
-        </nav>
+        <FilterChips
+          label="Show"
+          active={show}
+          items={FILTERS.map((f) => ({ key: f.key, href: qs(f.key === "all" ? {} : { show: f.key }), label: f.label }))}
+        />
       </div>
 
       {visible.length === 0 ? (
@@ -94,7 +86,7 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
             const balance = net(people.byClient.get(c.id));
             return (
               <li key={c.id}>
-                <Link href={`/contractors/${c.id}`} className="flex h-full flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 hover:bg-white">
+                <IntentLink href={`/contractors/${c.id}`} className="flex h-full flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 hover:bg-white">
                   <div className="flex items-center gap-3">
                     <Avatar name={c.name} className="size-12 text-base" tone={c.kind === "personal" ? "sunken" : "ink"} />
                     <div className="min-w-0 flex-1">
@@ -119,7 +111,7 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
                     {c.linked_user_id && <Badge tone="in">On Lekha</Badge>}
                     {c.merged_into && <Badge>Merged</Badge>}
                   </div>
-                </Link>
+                </IntentLink>
               </li>
             );
           })}

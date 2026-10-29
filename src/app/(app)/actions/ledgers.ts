@@ -8,6 +8,9 @@ import { getWorkspace, requireUser } from "@/lib/server/context";
 import { type ActionResult, fail } from "@/lib/server/errors";
 import { newToken, openToken, sealToken } from "@/lib/server/tokens";
 import { appUrl } from "@/lib/env";
+import { getLedger, getLedgerTxns } from "@/lib/server/queries";
+import type { SharedPayload } from "@/lib/server/shared";
+import { loadShareCard, shareMessage, summarizeShare, whatsappNumber } from "@/lib/server/share-card";
 
 const uuid = z.string().uuid();
 const money = z
@@ -159,8 +162,10 @@ export async function amendEntry(id: string, ledgerId: string, input: Partial<Om
   await requireUser();
   const parsed = entryBase.partial().omit({ ledger_id: true, kind: true }).safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: fieldErrors(parsed.error) };
+  // A field emptied in the form is sent as null so the stored text is cleared, not left as it was.
+  const cleared = Object.fromEntries((["description", "counterparty", "reference_no", "notes"] as const).filter((k) => input[k] === "").map((k) => [k, null]));
   const db = await userDb();
-  const { error } = await db.rpc("amend_transaction", { p_id: uuid.parse(id), p: parsed.data });
+  const { error } = await db.rpc("amend_transaction", { p_id: uuid.parse(id), p: { ...parsed.data, ...cleared } });
   if (error) return fail(error);
   refreshLedger(ledgerId);
   return { ok: true, message: "Entry updated" };
@@ -267,6 +272,10 @@ export interface ShareState {
     created_at: string;
   } | null;
   url: string | null;
+  /** Prefilled WhatsApp text, written from what the recipient will see. */
+  message: string | null;
+  /** The client's WhatsApp number (digits with country code), when their phone is saved. */
+  whatsappTo: string | null;
   expired: boolean;
 }
 
@@ -278,9 +287,44 @@ export async function getShareState(ledgerId: string): Promise<ShareState> {
     .eq("ledger_id", uuid.parse(ledgerId))
     .is("revoked_at", null)
     .maybeSingle();
-  if (!data) return { link: null, url: null, expired: false };
+  if (!data) return { link: null, url: null, message: null, whatsappTo: null, expired: false };
   const expired = Boolean(data.expires_at && new Date(data.expires_at) <= new Date());
-  return { link: data, url: expired ? null : await getShareUrl(ledgerId), expired };
+  const url = expired ? null : await getShareUrl(ledgerId);
+  const composed = url ? await composeShareMessage(ledgerId, url, data) : null;
+  return { link: data, url, message: composed?.message ?? null, whatsappTo: composed?.whatsappTo ?? null, expired };
+}
+
+/**
+ * The WhatsApp text, built from the owner's own view of the ledger with the link's settings applied
+ * (so it states only what the recipient can see). It does not open the public link, which would
+ * count as the recipient opening it. Also returns the client's number so the chat opens directly.
+ */
+async function composeShareMessage(ledgerId: string, url: string, options: NonNullable<ShareState["link"]>) {
+  const db = await userDb();
+  const token = url.slice(url.lastIndexOf("/") + 1);
+  const [ledger, txns, card] = await Promise.all([getLedger(db, ledgerId), getLedgerTxns(db, ledgerId), loadShareCard(token)]);
+  const posted = txns.filter((t) => t.status === "posted").map((t) => ({ ...t, date: t.txn_date }));
+  const payload: SharedPayload = {
+    ledger: {
+      name: ledger.name,
+      ledger_type: ledger.ledger_type,
+      perspective: ledger.perspective,
+      contractor_name: ledger.contractor?.name ?? null,
+      opening_balance: options.show_balance ? ledger.opening_balance : null,
+      opening_balance_date: ledger.opening_balance_date,
+      last_activity_at: ledger.last_activity_at,
+    },
+    options,
+    transactions: posted,
+    participants: null,
+    shared_expenses: null,
+    settlements: null,
+  };
+  const personal = ledger.ledger_type === "personal";
+  return {
+    message: shareMessage(summarizeShare(payload, card), url, personal),
+    whatsappTo: personal ? null : whatsappNumber(ledger.contractor?.phone),
+  };
 }
 
 /** Rebuilds the active link for the owner (decrypting the stored token on the server). */

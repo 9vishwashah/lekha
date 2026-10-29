@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { userDb } from "@/lib/supabase/server";
 import type { Role, Workspace } from "@/lib/types";
@@ -63,21 +64,30 @@ export interface Membership {
   workspace: Workspace;
 }
 
+/** Expired by every action that changes who belongs to a workspace, a role, or workspace settings. */
+export const MEMBERSHIPS_TAG = "memberships";
+
 export const getMemberships = cache(async (): Promise<Membership[]> => {
   const userId = await requireUser();
   const db = await userDb();
-  const { data, error } = await db
-    .from("workspace_members")
-    .select(
-      "id, role, display_name, workspace:workspaces(id, name, owner_user_id, currency, timezone, fy_start_month, default_gst_rate, default_tds_rate, default_tds_base, default_gst_mode)",
-    )
-    .eq("user_id", userId)
-    .order("created_at");
-  if (error) {
-    console.error("[db] workspace_members", error.code, error.message, error.details);
-    throw new ServiceError(error);
-  }
-  return (data ?? []) as unknown as Membership[];
+  const load = async () => {
+    const { data, error } = await db
+      .from("workspace_members")
+      .select(
+        "id, role, display_name, workspace:workspaces(id, name, owner_user_id, currency, timezone, fy_start_month, default_gst_rate, default_tds_rate, default_tds_base, default_gst_mode)",
+      )
+      .eq("user_id", userId)
+      .order("created_at");
+    if (error) {
+      console.error("[db] workspace_members", error.code, error.message, error.details);
+      throw new ServiceError(error);
+    }
+    return (data ?? []) as unknown as Membership[];
+  };
+  // Every screen starts here, and the list rarely changes, so it is kept per user for a few minutes
+  // and each screen goes straight to its own queries. Access itself is still enforced by RLS on every
+  // query, so a stale entry can at most show a workspace name, never its data. Errors are not cached.
+  return unstable_cache(load, ["memberships", userId], { tags: [MEMBERSHIPS_TAG], revalidate: 300 })();
 });
 
 export interface MyProfile {

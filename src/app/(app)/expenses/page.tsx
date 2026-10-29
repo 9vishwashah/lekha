@@ -1,3 +1,4 @@
+import { ExportLink } from "@/components/app/export-link";
 import Link from "next/link";
 import { Download, Plus } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
@@ -64,15 +65,15 @@ export default async function ExpensesPage(props: PageProps<"/expenses">) {
         title="Expenses"
         actions={
           <>
-            <a href={`/api/export/report?${exportQs}&format=xlsx`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
+            <ExportLink href={`/api/export/report?${exportQs}&format=xlsx`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
               <Download className="size-4" /> Excel
-            </a>
-            <a href={`/api/export/report?${exportQs}&format=pdf`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
+            </ExportLink>
+            <ExportLink href={`/api/export/report?${exportQs}&format=pdf`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
               PDF
-            </a>
-            <a href={`/api/export/report?${exportQs}&format=csv`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
+            </ExportLink>
+            <ExportLink href={`/api/export/report?${exportQs}&format=csv`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
               CSV
-            </a>
+            </ExportLink>
             {ctx.canWrite && (
               <LinkButton href="/expenses/new">
                 <Plus className="size-5" /> Add expense

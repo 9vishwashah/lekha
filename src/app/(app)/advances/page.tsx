@@ -1,4 +1,6 @@
-import Link from "next/link";
+import { ExportLink } from "@/components/app/export-link";
+import { IntentLink } from "@/components/app/intent-link";
+import { FilterChips } from "@/components/app/pending-nav";
 import { Download, Plus } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
 import { advancesWithPositions } from "@/lib/server/workspace-data";
@@ -8,7 +10,6 @@ import { LinkButton } from "@/components/ui/button";
 import { ADVANCE_STATUS_LABEL } from "@/lib/domain/advances";
 import { sum } from "@/lib/domain/money";
 import { formatDateShort, todayISO } from "@/lib/domain/dates";
-import { cn } from "@/lib/cn";
 
 export const metadata = { title: "Advances" };
 
@@ -42,12 +43,12 @@ export default async function AdvancesPage(props: PageProps<"/advances">) {
         title="Advances"
         actions={
           <>
-            <a href="/api/export/report?type=advances&format=xlsx" className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
+            <ExportLink href="/api/export/report?type=advances&format=xlsx" className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium hover:bg-sunken">
               <Download className="size-4" /> Excel
-            </a>
-            <a href="/api/export/report?type=advances&format=pdf" className="inline-flex h-12 items-center rounded-full px-4 font-medium hover:bg-sunken">
+            </ExportLink>
+            <ExportLink href="/api/export/report?type=advances&format=pdf" className="inline-flex h-12 items-center rounded-full px-4 font-medium hover:bg-sunken">
               PDF
-            </a>
+            </ExportLink>
             {ctx.canWrite && (
               <LinkButton href="/advances/new">
                 <Plus className="size-5" /> Give advance
@@ -79,13 +80,11 @@ export default async function AdvancesPage(props: PageProps<"/advances">) {
         ))}
       </section>
 
-      <nav aria-label="Filter advances" className="flex w-fit gap-1 overflow-x-auto rounded-full bg-sunken p-1">
-        {FILTERS.map((f) => (
-          <Link key={f.key} href={`/advances?show=${f.key}`} className={cn("inline-flex h-10 items-center whitespace-nowrap rounded-full px-4 text-sm font-medium", filter === f.key ? "bg-ink text-surface" : "text-ink-2")}>
-            {f.label}
-          </Link>
-        ))}
-      </nav>
+      <FilterChips
+        label="Filter advances"
+        active={filter}
+        items={FILTERS.map((f) => ({ key: f.key, href: `/advances?show=${f.key}`, label: f.label }))}
+      />
 
       {list.length === 0 ? (
         <EmptyState
@@ -99,7 +98,7 @@ export default async function AdvancesPage(props: PageProps<"/advances">) {
             const pct = a.position.amount > 0n ? Number(((a.position.amount - a.position.outstanding) * 100n) / a.position.amount) : 0;
             return (
               <li key={a.id}>
-                <Link href={`/advances/${a.id}`} className="flex flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 hover:bg-white">
+                <IntentLink href={`/advances/${a.id}`} className="flex flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 hover:bg-white">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-lg font-semibold">{a.contractor?.name}</div>
@@ -124,7 +123,7 @@ export default async function AdvancesPage(props: PageProps<"/advances">) {
                   <div className="h-2 overflow-hidden rounded-full bg-sunken" role="img" aria-label={`${pct}% recovered or adjusted`}>
                     <div className="h-full rounded-full bg-tea" style={{ width: `${pct}%` }} />
                   </div>
-                </Link>
+                </IntentLink>
               </li>
             );
           })}

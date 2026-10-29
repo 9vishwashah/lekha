@@ -29,7 +29,8 @@ export class SplitError extends MoneyError {}
 
 /** Integer weights for percent (×1000) and share units (×100). */
 function weight(value: string | undefined, scale: bigint, label: string): bigint {
-  const text = (value ?? "").trim();
+  // Trailing zeros add no precision ("40.0000" as stored by the database is 40).
+  const text = (value ?? "").trim().replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
   const decimals = scale === 1000n ? 3 : 2;
   const match = new RegExp(`^(\\d+)(?:\\.(\\d{0,${decimals}}))?$`).exec(text);
   if (!match) throw new SplitError(`Enter a valid ${label}`);

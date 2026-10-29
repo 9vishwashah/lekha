@@ -240,6 +240,13 @@ describe("share links", () => {
     expect(json).not.toContain("notes");
     expect(json).not.toContain("Bob secret");
     expect(data.transactions.every((t) => !("reference_no" in t) && !("id" in t))).toBe(true);
+
+    // The preview card names the sender and business, and nothing that identifies rows or people further.
+    const card = await rpc<{ color: string; shared_by: string; business: string }>(db, null, "public.get_share_card($1)", [token]);
+    expect(Object.keys(card).sort()).toEqual(["business", "color", "shared_by"]);
+    expect(card.shared_by).toBeTruthy();
+    expect(JSON.stringify(card)).not.toContain(wsA);
+    expect(await rpc(db, null, "public.get_share_card($1)", [tok("shareTokenUnknown")])).toBeNull();
   });
 
   it("cannot be used to write, and stops working when revoked or rotated", async () => {

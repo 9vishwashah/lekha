@@ -26,6 +26,9 @@ const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? 
  * Shared expense entry with a live split preview. The preview uses the same split engine as the
  * server, which recomputes the shares before the database checks they add up to the total.
  */
+/** "40.0000" → "40", "250.50" → "250.5": stored numbers shown the way people type them. */
+const plain = (v: string) => (v.includes(".") ? v.replace(/\.?0+$/, "") : v);
+
 export function SplitComposer({
   open,
   onClose,
@@ -59,7 +62,7 @@ export function SplitComposer({
     Object.fromEntries(people.map((p) => [p.id, c ? c.shares.some((s) => s.participant_id === p.id) : true])),
   );
   const [inputs, setInputs] = useState<Record<string, string>>(
-    c ? Object.fromEntries(c.shares.map((s) => [s.participant_id, c.split_method === "exact" ? s.share_amount : (s.share_input ?? "")])) : {},
+    c ? Object.fromEntries(c.shares.map((s) => [s.participant_id, plain(c.split_method === "exact" ? s.share_amount : (s.share_input ?? ""))])) : {},
   );
   const [category, setCategory] = useState(c?.category ?? "");
   const [paymentMode, setPaymentMode] = useState<string>(c?.payment_mode ?? "");
@@ -107,7 +110,12 @@ export function SplitComposer({
         shares: sharing.map((p) => ({ participant_id: p.id, input: method === "equal" ? undefined : inputs[p.id] || (method === "shares" ? "1" : "") })),
         idempotency_key: correcting ? undefined : key,
       });
-      if (!res.ok) return setError(res.error);
+      if (!res.ok) {
+        // The message also sits at the end of the form; a toast makes sure it is seen.
+        setError(res.error);
+        toast.error(res.error);
+        return;
+      }
       toast.success(res.message ?? "Saved");
       router.refresh();
       setDescription("");

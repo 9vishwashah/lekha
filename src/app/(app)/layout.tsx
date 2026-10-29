@@ -5,6 +5,7 @@ import { BottomNav, QuickAddButton, Sidebar } from "@/components/app/nav";
 import { WorkspaceSwitcher } from "@/components/app/workspace-switcher";
 import { Logo } from "@/components/app/logo";
 import { SwipeNav } from "@/components/app/swipe-nav";
+import { PendingNavProvider } from "@/components/app/pending-nav";
 import { WORKSPACE_COOKIE, getCollaborations, loadMemberships } from "@/lib/server/context";
 import { ServiceProblem } from "@/components/app/service-problem";
 import { SetupRequired, missingConfig } from "@/components/app/setup-required";
@@ -54,7 +55,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <main id="main" className="w-full min-w-0 flex-1 overflow-x-clip px-4 pb-32 pt-2 sm:px-6 lg:px-10 lg:pb-16 lg:pt-8">
-          <SwipeNav>{children}</SwipeNav>
+          <SwipeNav>
+            <PendingNavProvider>{children}</PendingNavProvider>
+          </SwipeNav>
         </main>
       </div>
       <BottomNav hasWorkspace={hasWorkspace} />

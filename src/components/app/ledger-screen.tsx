@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { ExportLink } from "./export-link";
+import { useCallback, useEffect, useMemo, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -108,14 +109,19 @@ export function LedgerScreen({
   const archived = ledger.status === "archived";
   const canAdd = access.canCreate && !archived;
   const [search, setSearch] = useState(filters.q);
-  const [, startFilter] = useTransition();
+  // Controls show the new choice at once; the entries follow when the server answers.
+  const [filtering, startFilter] = useTransition();
+  const [shownFilters, setShownFilters] = useOptimistic(filters);
   const applyFilters = useCallback(
     (patch: Partial<typeof filters>) => {
-      const next = { ...filters, ...patch };
+      const next = { ...shownFilters, ...patch };
       const qs = new URLSearchParams(Object.entries(next).filter(([, v]) => v) as [string, string][]);
-      startFilter(() => router.replace(`/ledgers/${ledger.id}${qs.size ? `?${qs}` : ""}`, { scroll: false }));
+      startFilter(() => {
+        setShownFilters(next);
+        router.replace(`/ledgers/${ledger.id}${qs.size ? `?${qs}` : ""}`, { scroll: false });
+      });
     },
-    [filters, ledger.id, router],
+    [shownFilters, setShownFilters, ledger.id, router],
   );
   // Search applies after a short pause in typing.
   useEffect(() => {
@@ -278,7 +284,7 @@ export function LedgerScreen({
           </label>
           <select
             id="dir"
-            value={filters.dir}
+            value={shownFilters.dir}
             onChange={(e) => applyFilters({ dir: e.target.value })}
             className="h-11 rounded-full bg-surface px-4 text-sm ring-1 ring-inset ring-line"
           >
@@ -291,7 +297,7 @@ export function LedgerScreen({
           </label>
           <select
             id="status"
-            value={filters.status}
+            value={shownFilters.status}
             onChange={(e) => applyFilters({ status: e.target.value })}
             className="h-11 rounded-full bg-surface px-4 text-sm ring-1 ring-inset ring-line"
           >
@@ -303,8 +309,8 @@ export function LedgerScreen({
           <DateRangeInput
             className="col-span-2"
             label="Any date"
-            from={filters.from}
-            to={filters.to}
+            from={shownFilters.from}
+            to={shownFilters.to}
             onChange={(r) => applyFilters({ from: r.from, to: r.to })}
           />
         </div>
@@ -329,150 +335,152 @@ export function LedgerScreen({
         </p>
       )}
 
-      {/* Entries */}
-      {lines.length === 0 ? (
-        <div className="rounded-[var(--radius-card)] border-2 border-dashed border-line p-8 text-center">
-          <p className="display text-2xl font-bold">{hasFilters ? "Nothing matches these filters" : "No entries yet"}</p>
-          <p className="mt-1 text-ink-2">
-            {hasFilters ? "Clear the filters to see every entry." : canAdd ? "Add the first entry, or import your existing Excel sheet." : "Entries will appear here as they are added."}
-          </p>
-          {!hasFilters && canAdd && (
-            <div className="mt-4 flex justify-center gap-2">
-              <Button onClick={() => setComposer(true)}>
-                <Plus className="size-4" /> Add entry
-              </Button>
-              {access.canManage && (
-                <Link href={`/ledgers/${ledger.id}/import`} className="inline-flex h-12 items-center rounded-full px-5 font-medium ring-1 ring-inset ring-line">
-                  Import Excel
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* Phones: cards grouped by day */}
-          <div className="flex flex-col gap-5 md:hidden">
-            {groups.map(([date, items]) => (
-              <section key={date} aria-label={formatDate(date)}>
-                <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-ink-3">{formatDateShort(date, today)}</h3>
-                <ul className="divide-y divide-line overflow-hidden rounded-[24px] bg-surface ring-1 ring-inset ring-line/70">
-                  {items.map((l) => (
-                    <li key={l.txn.id}>
-                      <button type="button" onClick={() => setSelected(l)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-white">
-                        <span
-                          className={cn(
-                            "inline-flex size-10 shrink-0 items-center justify-center rounded-full",
-                            l.txn.direction === "in" ? "bg-[#d9eae5] text-in" : "bg-[#f6dcda] text-out",
-                          )}
-                          aria-hidden
-                        >
-                          {l.txn.direction === "in" ? <ArrowDownLeft className="size-4" /> : <ArrowUpRight className="size-4" />}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className={cn("block truncate text-[15px] font-medium", l.txn.status === "void" && "line-through opacity-50")}>
-                            {l.txn.description || l.txn.counterparty || KIND_LABEL[l.txn.kind]}
+      {/* Entries (faded while a filter change loads) */}
+      <div data-pending={filtering || undefined} className="flex flex-col gap-6 transition-opacity duration-200 data-[pending]:opacity-50 data-[pending]:delay-100">
+        {lines.length === 0 ? (
+          <div className="rounded-[var(--radius-card)] border-2 border-dashed border-line p-8 text-center">
+            <p className="display text-2xl font-bold">{hasFilters ? "Nothing matches these filters" : "No entries yet"}</p>
+            <p className="mt-1 text-ink-2">
+              {hasFilters ? "Clear the filters to see every entry." : canAdd ? "Add the first entry, or import your existing Excel sheet." : "Entries will appear here as they are added."}
+            </p>
+            {!hasFilters && canAdd && (
+              <div className="mt-4 flex justify-center gap-2">
+                <Button onClick={() => setComposer(true)}>
+                  <Plus className="size-4" /> Add entry
+                </Button>
+                {access.canManage && (
+                  <Link href={`/ledgers/${ledger.id}/import`} className="inline-flex h-12 items-center rounded-full px-5 font-medium ring-1 ring-inset ring-line">
+                    Import Excel
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Phones: cards grouped by day */}
+            <div className="flex flex-col gap-5 md:hidden">
+              {groups.map(([date, items]) => (
+                <section key={date} aria-label={formatDate(date)}>
+                  <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-ink-3">{formatDateShort(date, today)}</h3>
+                  <ul className="divide-y divide-line overflow-hidden rounded-[24px] bg-surface ring-1 ring-inset ring-line/70">
+                    {items.map((l) => (
+                      <li key={l.txn.id}>
+                        <button type="button" onClick={() => setSelected(l)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-white">
+                          <span
+                            className={cn(
+                              "inline-flex size-10 shrink-0 items-center justify-center rounded-full",
+                              l.txn.direction === "in" ? "bg-[#d9eae5] text-in" : "bg-[#f6dcda] text-out",
+                            )}
+                            aria-hidden
+                          >
+                            {l.txn.direction === "in" ? <ArrowDownLeft className="size-4" /> : <ArrowUpRight className="size-4" />}
                           </span>
-                          <span className="flex items-center gap-1.5 truncate text-[13px] text-ink-3">
+                          <span className="min-w-0 flex-1">
+                            <span className={cn("block truncate text-[15px] font-medium", l.txn.status === "void" && "line-through opacity-50")}>
+                              {l.txn.description || l.txn.counterparty || KIND_LABEL[l.txn.kind]}
+                            </span>
+                            <span className="flex items-center gap-1.5 truncate text-[13px] text-ink-3">
+                              {l.txn.voucher_no}
+                              {l.txn.kind !== "regular" && ` · ${KIND_LABEL[l.txn.kind]}`}
+                              {l.txn.status !== "posted" && <Badge tone={l.txn.status === "void" ? "neutral" : "warn"} className="h-5">{l.txn.status}</Badge>}
+                              {l.reversed && <Badge className="h-5">reversed</Badge>}
+                            </span>
+                          </span>
+                          <span className="text-right">
+                            <Money
+                              value={toPaise(l.txn.amount)}
+                              tone={l.txn.direction === "in" ? "in" : "out"}
+                              className={cn("block text-[15px] font-semibold", l.txn.status === "void" && "line-through opacity-50", !l.txn.is_cash && "opacity-75")}
+                            />
+                            {l.counted && <Money value={toPaise(l.running)} className="block text-[12px] text-ink-3" />}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+
+            {/* Larger screens: a proper ledger table */}
+            <div className="hidden overflow-hidden rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70 md:block">
+              <table className="w-full text-left text-[14px]">
+                <caption className="sr-only">Entries in {ledger.name}, newest first</caption>
+                <thead className="bg-ink text-[13px] text-surface">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 font-medium">No.</th>
+                    <th scope="col" className="px-3 py-3 font-medium">Date</th>
+                    <th scope="col" className="px-3 py-3 font-medium">Payee / description</th>
+                    {isTax && access.canViewTax && <th scope="col" className="px-3 py-3 text-right font-medium">Bill · GST · TDS</th>}
+                    <th scope="col" className="px-3 py-3 text-right font-medium">Credit (in)</th>
+                    <th scope="col" className="px-3 py-3 text-right font-medium">Debit (out)</th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {ordered.map((l) => {
+                    const t = tax[l.txn.id];
+                    const amount = toPaise(l.txn.amount);
+                    return (
+                      <tr
+                        key={l.txn.id}
+                        onClick={() => setSelected(l)}
+                        className={cn("cursor-pointer hover:bg-white", l.txn.status !== "posted" && "text-ink-3")}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-[12px] text-ink-3">
+                          <button type="button" className="underline-offset-2 hover:underline" onClick={() => setSelected(l)}>
                             {l.txn.voucher_no}
-                            {l.txn.kind !== "regular" && ` · ${KIND_LABEL[l.txn.kind]}`}
+                          </button>
+                        </td>
+                        <td className="num whitespace-nowrap px-3 py-3">{formatDate(l.txn.txn_date)}</td>
+                        <td className="max-w-[22rem] px-3 py-3">
+                          <div className={cn("truncate font-medium", l.txn.status === "void" && "line-through")}>
+                            {l.txn.counterparty || l.txn.description || KIND_LABEL[l.txn.kind]}
+                          </div>
+                          <div className="flex items-center gap-1.5 truncate text-[12px] text-ink-3">
+                            {l.txn.counterparty && l.txn.description ? l.txn.description : ""}
+                            {l.txn.kind !== "regular" && <Badge className="h-5">{KIND_LABEL[l.txn.kind]}</Badge>}
                             {l.txn.status !== "posted" && <Badge tone={l.txn.status === "void" ? "neutral" : "warn"} className="h-5">{l.txn.status}</Badge>}
                             {l.reversed && <Badge className="h-5">reversed</Badge>}
-                          </span>
-                        </span>
-                        <span className="text-right">
-                          <Money
-                            value={toPaise(l.txn.amount)}
-                            tone={l.txn.direction === "in" ? "in" : "out"}
-                            className={cn("block text-[15px] font-semibold", l.txn.status === "void" && "line-through opacity-50", !l.txn.is_cash && "opacity-75")}
-                          />
-                          {l.counted && <Money value={toPaise(l.running)} className="block text-[12px] text-ink-3" />}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-
-          {/* Larger screens: a proper ledger table */}
-          <div className="hidden overflow-hidden rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70 md:block">
-            <table className="w-full text-left text-[14px]">
-              <caption className="sr-only">Entries in {ledger.name}, newest first</caption>
-              <thead className="bg-ink text-[13px] text-surface">
-                <tr>
-                  <th scope="col" className="px-4 py-3 font-medium">No.</th>
-                  <th scope="col" className="px-3 py-3 font-medium">Date</th>
-                  <th scope="col" className="px-3 py-3 font-medium">Payee / description</th>
-                  {isTax && access.canViewTax && <th scope="col" className="px-3 py-3 text-right font-medium">Bill · GST · TDS</th>}
-                  <th scope="col" className="px-3 py-3 text-right font-medium">Credit (in)</th>
-                  <th scope="col" className="px-3 py-3 text-right font-medium">Debit (out)</th>
-                  <th scope="col" className="px-4 py-3 text-right font-medium">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {ordered.map((l) => {
-                  const t = tax[l.txn.id];
-                  const amount = toPaise(l.txn.amount);
-                  return (
-                    <tr
-                      key={l.txn.id}
-                      onClick={() => setSelected(l)}
-                      className={cn("cursor-pointer hover:bg-white", l.txn.status !== "posted" && "text-ink-3")}
-                    >
-                      <td className="whitespace-nowrap px-4 py-3 font-mono text-[12px] text-ink-3">
-                        <button type="button" className="underline-offset-2 hover:underline" onClick={() => setSelected(l)}>
-                          {l.txn.voucher_no}
-                        </button>
-                      </td>
-                      <td className="num whitespace-nowrap px-3 py-3">{formatDate(l.txn.txn_date)}</td>
-                      <td className="max-w-[22rem] px-3 py-3">
-                        <div className={cn("truncate font-medium", l.txn.status === "void" && "line-through")}>
-                          {l.txn.counterparty || l.txn.description || KIND_LABEL[l.txn.kind]}
-                        </div>
-                        <div className="flex items-center gap-1.5 truncate text-[12px] text-ink-3">
-                          {l.txn.counterparty && l.txn.description ? l.txn.description : ""}
-                          {l.txn.kind !== "regular" && <Badge className="h-5">{KIND_LABEL[l.txn.kind]}</Badge>}
-                          {l.txn.status !== "posted" && <Badge tone={l.txn.status === "void" ? "neutral" : "warn"} className="h-5">{l.txn.status}</Badge>}
-                          {l.reversed && <Badge className="h-5">reversed</Badge>}
-                          {l.txn.created_via === "collaborator" && <Badge tone="outline" className="h-5">by {names[l.txn.created_by] ?? "collaborator"}</Badge>}
-                        </div>
-                      </td>
-                      {isTax && access.canViewTax && (
-                        <td className="num whitespace-nowrap px-3 py-3 text-right text-[12px] text-ink-2">
-                          {t ? (
-                            <>
-                              <div>
-                                <Money value={toPaise(t.taxable_amount)} /> · <Money value={toPaise(t.gst_amount)} /> · <Money value={toPaise(t.tds_amount)} />
-                              </div>
-                              <div className="font-medium text-ink">
-                                after TDS <Money value={toPaise(t.net_amount)} />
-                              </div>
-                            </>
-                          ) : (
-                            "—"
-                          )}
+                            {l.txn.created_via === "collaborator" && <Badge tone="outline" className="h-5">by {names[l.txn.created_by] ?? "collaborator"}</Badge>}
+                          </div>
                         </td>
-                      )}
-                      <td className={cn("whitespace-nowrap px-3 py-3 text-right", l.txn.status === "void" && "line-through")}>
-                        {l.txn.direction === "in" ? <Money value={amount} tone="in" className={cn("font-semibold", !l.txn.is_cash && "opacity-70")} /> : ""}
-                      </td>
-                      <td className={cn("whitespace-nowrap px-3 py-3 text-right", l.txn.status === "void" && "line-through")}>
-                        {l.txn.direction === "out" ? <Money value={amount} tone="out" className={cn("font-semibold", !l.txn.is_cash && "opacity-70")} /> : ""}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        {l.counted ? <Money value={toPaise(l.running)} className="font-medium" /> : <span className="text-[12px] text-ink-3">not counted</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {summary.drafts > 0 && <p className="text-sm text-ink-3">{summary.drafts} draft entries are listed but not counted in balances.</p>}
-        </>
-      )}
+                        {isTax && access.canViewTax && (
+                          <td className="num whitespace-nowrap px-3 py-3 text-right text-[12px] text-ink-2">
+                            {t ? (
+                              <>
+                                <div>
+                                  <Money value={toPaise(t.taxable_amount)} /> · <Money value={toPaise(t.gst_amount)} /> · <Money value={toPaise(t.tds_amount)} />
+                                </div>
+                                <div className="font-medium text-ink">
+                                  after TDS <Money value={toPaise(t.net_amount)} />
+                                </div>
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        )}
+                        <td className={cn("whitespace-nowrap px-3 py-3 text-right", l.txn.status === "void" && "line-through")}>
+                          {l.txn.direction === "in" ? <Money value={amount} tone="in" className={cn("font-semibold", !l.txn.is_cash && "opacity-70")} /> : ""}
+                        </td>
+                        <td className={cn("whitespace-nowrap px-3 py-3 text-right", l.txn.status === "void" && "line-through")}>
+                          {l.txn.direction === "out" ? <Money value={amount} tone="out" className={cn("font-semibold", !l.txn.is_cash && "opacity-70")} /> : ""}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          {l.counted ? <Money value={toPaise(l.running)} className="font-medium" /> : <span className="text-[12px] text-ink-3">not counted</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {summary.drafts > 0 && <p className="text-sm text-ink-3">{summary.drafts} draft entries are listed but not counted in balances.</p>}
+          </>
+        )}
+      </div>
 
       <EntryComposer
         key={editing?.id ?? "new"}
@@ -514,13 +522,13 @@ export function LedgerScreen({
             { f: "xlsx", label: "Excel workbook", hint: "With totals and Indian number format", icon: FileSpreadsheet },
             { f: "csv", label: "CSV", hint: "For other accounting software", icon: FileSpreadsheet },
           ].map(({ f, label, hint, icon: Icon }) => (
-            <a key={f} href={exportHref(f)} className="flex items-center gap-4 rounded-3xl bg-white p-4 ring-1 ring-inset ring-line hover:bg-canvas">
+            <ExportLink key={f} href={exportHref(f)} keepContent onDone={() => setExportOpen(false)} className="flex items-center gap-4 rounded-3xl bg-white p-4 ring-1 ring-inset ring-line hover:bg-canvas">
               <Icon className="size-5" />
               <span>
                 <span className="block font-semibold">{label}</span>
                 <span className="block text-sm text-ink-2">{hint}</span>
               </span>
-            </a>
+            </ExportLink>
           ))}
           <button type="button" onClick={() => { setExportOpen(false); setTimeout(() => window.print(), 300); }} className="flex items-center gap-4 rounded-3xl bg-white p-4 text-left ring-1 ring-inset ring-line hover:bg-canvas">
             <Printer className="size-5" />

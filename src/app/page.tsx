@@ -14,6 +14,9 @@ export default async function Landing() {
       <nav className="flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-2">
+          <Link href="#guide" className="hidden h-11 items-center rounded-full px-4 text-[15px] font-medium hover:bg-sunken sm:inline-flex">
+            How it works
+          </Link>
           <Link href="/sign-in" className="hidden h-11 items-center rounded-full px-4 text-[15px] font-medium hover:bg-sunken sm:inline-flex">
             Sign in
           </Link>
@@ -26,11 +29,11 @@ export default async function Landing() {
       <section className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[1.15fr_1fr] lg:py-20">
         <div className="animate-rise">
           <h1 className="display max-w-4xl text-[3.4rem] font-extrabold sm:text-7xl lg:text-[5.6rem]">
-            Every contractor’s <span className="text-ink-3">khata,</span> settled.
+            For you <span className="text-ink-3">&amp;</span> your businesses.
           </h1>
           <p className="mt-6 max-w-xl text-lg text-ink-2">
-            Keep ledgers for every contractor, work out GST and TDS line by line, track advances until they come back, and send each
-            person a live statement on WhatsApp.
+            One place for every khata you keep: clients, suppliers, sites, family and friends. Work out GST and TDS line by line, track
+            advances until they come back, split shared costs, and send each person a live statement on WhatsApp.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <LinkButton href="/sign-up" size="lg">
@@ -79,10 +82,76 @@ export default async function Landing() {
         </div>
       </section>
 
+      <Guide />
+
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 text-sm text-ink-3">
         <span>Built for India: ₹, lakh–crore grouping, April financial year.</span>
         <span>Lekha keeps records. It does not file GST or TDS returns.</span>
       </footer>
     </div>
+  );
+}
+
+const STEPS = [
+  {
+    title: "Set up in a minute",
+    body: "Sign up with email or Google, add your name and mobile, and name a workspace for each business. Personal accounts live alongside.",
+    color: "bg-mustard text-ink",
+  },
+  {
+    title: "Add your people",
+    body: "Client Accounts hold everyone you deal with: clients, suppliers, vendors, staff, friends. Add them once, use them everywhere.",
+    color: "bg-lavender text-ink",
+  },
+  {
+    title: "Open a ledger",
+    body: "Basic for money in and out. Taxation for bills with GST and TDS worked out per entry. Shared to split costs with friends or family.",
+    color: "bg-pink text-ink",
+  },
+  {
+    title: "Add entries, or import Excel",
+    body: "Money in or out takes seconds on your phone. Bring old sheets across with a preview before anything is saved.",
+    color: "bg-sky text-ink",
+  },
+  {
+    title: "Share it live",
+    body: "Send a read-only link on WhatsApp that updates as you add entries, or invite someone to add entries with you.",
+    color: "bg-tea text-seashell",
+  },
+] as const;
+
+/** A short guide: the five things you do in Lekha, in order. */
+function Guide() {
+  return (
+    <section id="guide" aria-labelledby="guide-title" className="scroll-mt-6 border-t border-line py-14 lg:py-20">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <h2 id="guide-title" className="display text-[2.6rem] font-extrabold leading-none sm:text-6xl">
+          How it works
+        </h2>
+        <p className="max-w-sm text-[15px] text-ink-2">Five steps from sign-up to a statement your client opens on WhatsApp.</p>
+      </div>
+      <ol className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {STEPS.map((s, i) => (
+          <li key={s.title} className={`flex min-h-56 flex-col justify-between rounded-[32px] p-6 ${s.color}`}>
+            <span className="num display text-6xl font-extrabold leading-none opacity-90">{i + 1}</span>
+            <span>
+              <span className="display block text-2xl font-bold">{s.title}</span>
+              <span className="mt-2 block text-[15px] leading-relaxed opacity-80">{s.body}</span>
+            </span>
+          </li>
+        ))}
+        <li className="flex min-h-56 flex-col justify-between rounded-[32px] bg-ink p-6 text-seashell">
+          <span className="display text-2xl font-bold">Your books stay yours.</span>
+          <span className="flex flex-col gap-4">
+            <span className="text-[15px] leading-relaxed opacity-75">
+              Every workspace is private. Shared links are read-only and can be turned off any time. Export PDF, Excel or CSV whenever you like.
+            </span>
+            <LinkButton href="/sign-up" variant="light" className="self-start">
+              Start free
+            </LinkButton>
+          </span>
+        </li>
+      </ol>
+    </section>
   );
 }

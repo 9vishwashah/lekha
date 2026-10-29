@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/export/**": ["./assets/fonts/**"],
     "/api/share/**": ["./assets/fonts/**"],
+    // Link-preview images (src/lib/og.tsx)
+    "/opengraph-image**": ["./assets/fonts/**"],
+    "/s/**": ["./assets/fonts/**"],
+    "/invite/**": ["./assets/fonts/**"],
   },
   turbopack: {
     rules: {

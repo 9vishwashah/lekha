@@ -1,4 +1,5 @@
 "use client";
+import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -43,7 +44,7 @@ export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; 
     <nav aria-label="Main" className="flex flex-col gap-1">
       {hasWorkspace &&
         PRIMARY.map(({ href, label, icon: Icon }) => (
-          <Link
+          <IntentLink
             key={href}
             href={href}
             aria-current={isActive(pathname, href) ? "page" : undefined}
@@ -54,10 +55,10 @@ export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; 
           >
             <Icon className="size-[18px]" strokeWidth={2} />
             {label}
-          </Link>
+          </IntentLink>
         ))}
       {(sharedCount > 0 || !hasWorkspace) && (
-        <Link
+        <IntentLink
           href="/shared"
           aria-current={isActive(pathname, "/shared") ? "page" : undefined}
           className={cn(
@@ -68,7 +69,7 @@ export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; 
           <Share2 className="size-[18px]" />
           Shared with me
           {sharedCount > 0 && <span className="ml-auto text-xs opacity-70">{sharedCount}</span>}
-        </Link>
+        </IntentLink>
       )}
     </nav>
   );
@@ -123,7 +124,7 @@ export function BottomNav({ hasWorkspace }: { hasWorkspace: boolean }) {
   const [moreOpen, setMoreOpen] = useState(false);
   if (!hasWorkspace) return null;
   const tab = (href: string, label: string, Icon: typeof Home) => (
-    <Link
+    <IntentLink
       href={href}
       aria-current={isActive(pathname, href) ? "page" : undefined}
       className={cn(
@@ -133,7 +134,7 @@ export function BottomNav({ hasWorkspace }: { hasWorkspace: boolean }) {
     >
       <Icon className="size-5" />
       <span className="sr-only">{label}</span>
-    </Link>
+    </IntentLink>
   );
   const moreActive = ["/expenses", "/advances", "/reports", "/settings", "/shared"].some((h) => isActive(pathname, h));
   return (
@@ -169,14 +170,14 @@ export function BottomNav({ hasWorkspace }: { hasWorkspace: boolean }) {
         <ul className="grid grid-cols-2 gap-2 pb-2">
           {[...PRIMARY.slice(3), { href: "/shared", label: "Shared with me", icon: Share2 }].map(({ href, label, icon: Icon }) => (
             <li key={href}>
-              <Link
+              <IntentLink
                 href={href}
                 onClick={() => setMoreOpen(false)}
                 className="flex h-24 flex-col justify-between rounded-3xl bg-white p-4 ring-1 ring-inset ring-line"
               >
                 <Icon className="size-5" />
                 <span className="text-[15px] font-semibold">{label}</span>
-              </Link>
+              </IntentLink>
             </li>
           ))}
         </ul>

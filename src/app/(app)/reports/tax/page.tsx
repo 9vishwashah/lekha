@@ -1,3 +1,4 @@
+import { ExportLink } from "@/components/app/export-link";
 import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
@@ -36,9 +37,9 @@ export default async function TaxReport(props: PageProps<"/reports/tax">) {
         actions={
           <>
             {["xlsx", "pdf", "csv"].map((f) => (
-              <a key={f} href={`/api/export/report?${qs}&format=${f}`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium uppercase hover:bg-sunken">
+              <ExportLink key={f} href={`/api/export/report?${qs}&format=${f}`} className="inline-flex h-12 items-center gap-2 rounded-full px-4 font-medium uppercase hover:bg-sunken">
                 <Download className="size-4" /> {f}
-              </a>
+              </ExportLink>
             ))}
           </>
         }

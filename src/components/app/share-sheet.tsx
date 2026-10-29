@@ -9,9 +9,12 @@ import { Badge } from "@/components/ui/bits";
 import { type ShareState, createShareLink, getShareState, revokeShareLink, updateShareLink } from "@/app/(app)/actions/ledgers";
 import { formatDateTime } from "@/lib/domain/dates";
 
-/** WhatsApp click-to-chat with a prefilled message. Works on phones (app) and desktop (web). */
-export function whatsappUrl(text: string) {
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+/**
+ * WhatsApp click-to-chat with a prefilled message. Works on phones (app) and desktop (web). With a
+ * number it opens that person's chat; without one WhatsApp asks who to send it to.
+ */
+export function whatsappUrl(text: string, to?: string | null) {
+  return `https://wa.me/${to ?? ""}?text=${encodeURIComponent(text)}`;
 }
 
 const DEFAULTS = { show_balance: true, show_running_balance: true, show_tax: false, show_reference: false, show_counterparty: true };
@@ -70,6 +73,7 @@ export function ShareSheet({
     start(async () => {
       const res = await updateShareLink(state.link!.id, ledgerId, next);
       if (!res.ok) toast.error(res.error);
+      else await refresh(); // the message states only what the link now shows
     });
   };
 
@@ -82,9 +86,8 @@ export function ShareSheet({
       await refresh();
     });
 
-  const message = state?.url
-    ? `Hi, here is the updated ledger statement for ${ledgerName}. You can view the latest entries and balance here: ${state.url}`
-    : "";
+  // Written on the server from what the recipient will see (sender, business, balance), then signed.
+  const message = state?.url ? (state.message ?? `Here’s the live statement for ${ledgerName}: ${state.url}`) : "";
 
   return (
     <Sheet open={open} onClose={onClose} title="Share statement" description="Anyone with the link can view. Nobody can edit through it.">
@@ -105,7 +108,7 @@ export function ShareSheet({
               </p>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <a
-                  href={whatsappUrl(message)}
+                  href={whatsappUrl(message, state.whatsappTo)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-mustard font-medium text-ink"

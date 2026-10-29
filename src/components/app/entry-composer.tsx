@@ -191,6 +191,7 @@ export function EntryComposer({
       if (!result.ok) {
         setFormError(result.error);
         setErrors(result.fieldErrors ?? {});
+        toast.error(result.error);
         return;
       }
       toast.success(result.message ?? "Saved");

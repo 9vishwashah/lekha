@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { FilterChips } from "@/components/app/pending-nav";
 import { Plus, Search } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
 import { ledgerBalances } from "@/lib/server/workspace-data";
@@ -10,7 +10,6 @@ import { relativeTime } from "@/lib/domain/dates";
 import { WalletCard } from "@/components/app/wallet-card";
 import { EmptyState, PageHeader } from "@/components/ui/bits";
 import { LinkButton } from "@/components/ui/button";
-import { cn } from "@/lib/cn";
 
 export const metadata = { title: "Ledgers" };
 
@@ -78,20 +77,14 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
           {showArchived && <input type="hidden" name="status" value="archived" />}
           {picking && <input type="hidden" name="add" value="entry" />}
         </form>
-        <nav aria-label="Ledger status" className="flex w-fit gap-1 rounded-full bg-sunken p-1">
-          {[
-            { label: "Active", href: "/ledgers", on: !showArchived },
-            { label: "Archived", href: "/ledgers?status=archived", on: showArchived },
-          ].map((t) => (
-            <Link
-              key={t.label}
-              href={t.href}
-              className={cn("inline-flex h-10 items-center rounded-full px-4 text-sm font-medium", t.on ? "bg-ink text-surface" : "text-ink-2")}
-            >
-              {t.label}
-            </Link>
-          ))}
-        </nav>
+        <FilterChips
+          label="Ledger status"
+          active={showArchived ? "archived" : "active"}
+          items={[
+            { key: "active", href: "/ledgers", label: "Active" },
+            { key: "archived", href: "/ledgers?status=archived", label: "Archived" },
+          ]}
+        />
       </div>
 
       {visible.length === 0 ? (

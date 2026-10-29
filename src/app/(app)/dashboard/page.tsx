@@ -1,3 +1,4 @@
+import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock } from "lucide-react";
 import { getMyProfile, getWorkspace } from "@/lib/server/context";
@@ -152,7 +153,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
                 <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
                   {recentRows.map((t) => (
                     <li key={t.id}>
-                      <Link href={`/ledgers/${t.ledger?.id}`} className="flex items-center gap-3 px-4 py-3.5 hover:bg-white sm:px-5">
+                      <IntentLink href={`/ledgers/${t.ledger?.id}`} className="flex items-center gap-3 px-4 py-3.5 hover:bg-white sm:px-5">
                         <span className={cn("size-3 shrink-0 rounded-full", walletOf(t.ledger?.color).bg)} aria-hidden />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-medium">{t.description || t.counterparty || t.voucher_no}</span>
@@ -172,7 +173,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
                             </Badge>
                           )}
                         </span>
-                      </Link>
+                      </IntentLink>
                     </li>
                   ))}
                 </ul>
@@ -216,7 +217,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
 
 function Tile({ color, label, value, note, href }: { color: string; label: string; value: bigint; note: string; href: string }) {
   return (
-    <Link
+    <IntentLink
       href={href}
       className={cn("flex min-h-36 min-w-0 flex-col justify-between rounded-[var(--radius-card)] p-5 text-ink transition-transform active:scale-[0.99]", color)}
     >
@@ -225,6 +226,6 @@ function Tile({ color, label, value, note, href }: { color: string; label: strin
         <Amount value={value} size="lg" className="block truncate text-[1.7rem] sm:text-[2.25rem]" />
         <span className="mt-1 block truncate text-[13px] opacity-70">{note}</span>
       </span>
-    </Link>
+    </IntentLink>
   );
 }

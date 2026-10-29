@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "sonner";
 import "./globals.css";
+import { appUrl } from "@/lib/env";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -13,9 +14,12 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
+  // Absolute URLs for link-preview images (WhatsApp ignores relative ones).
+  metadataBase: new URL(appUrl()),
   title: { default: "Lekha", template: "%s · Lekha" },
-  description: "Contractor ledgers, taxes, advances and shared accounts that stay in sync with the people you work with.",
+  description: "Ledgers for you and your businesses: clients, GST and TDS, advances and shared accounts that stay in sync with the people you work with.",
   applicationName: "Lekha",
+  openGraph: { siteName: "Lekha", type: "website" },
 };
 
 export const viewport: Viewport = {

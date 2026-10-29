@@ -1,39 +1,41 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { anonDb } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/server/context";
 import { allow, clientKey } from "@/lib/server/rate-limit";
-import { isTokenShape } from "@/lib/server/shared";
 import { Logo } from "@/components/app/logo";
 import { LinkButton } from "@/components/ui/button";
 import { AcceptButton } from "./accept";
+import { type InvitePreview, loadInvitePreview } from "./preview";
 import { SetupRequired, missingConfig } from "@/components/app/setup-required";
 
 // Always rendered per request: private data, and configuration is read at runtime.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "Invitation", robots: { index: false }, referrer: "no-referrer" };
+const base: Metadata = { title: "Invitation", robots: { index: false }, referrer: "no-referrer" };
 
-interface Preview {
-  scope: "workspace" | "ledger";
-  status: "pending" | "accepted" | "revoked" | "expired";
-  ledger_name: string | null;
-  ledger_type: string | null;
-  workspace_name: string | null;
-  participant_name: string | null;
-  invited_by: string | null;
-  role: string | null;
-  permissions: Record<string, boolean>;
+/** Link previews (WhatsApp etc.) name the ledger and who sent the invitation. */
+export async function generateMetadata(props: PageProps<"/invite/[token]">): Promise<Metadata> {
+  const { token } = await props.params;
+  const p = await loadInvitePreview(token);
+  if (!p || p.status !== "pending") return base;
+  const what = p.scope === "ledger" ? `“${p.ledger_name}”` : (p.workspace_name ?? "a workspace");
+  const title = `${p.invited_by ?? "Someone"} invited you to ${what}`;
+  const description = "Open to join on Lekha. You’ll see only what this invitation covers.";
+  return { ...base, title, description, openGraph: { title, description, siteName: "Lekha", type: "website" }, twitter: { card: "summary_large_image", title, description } };
 }
+
 
 export default async function InvitePage(props: PageProps<"/invite/[token]">) {
   const { token } = await props.params;
   const missing = missingConfig();
   if (missing.length) return <SetupRequired missing={missing} />;
   const { userId } = await auth();
-  let preview: Preview | null = null;
-  if (isTokenShape(token) && allow(await clientKey("invite"), 30, 60_000)) {
-    const { data } = await anonDb().rpc("get_invitation_preview", { p_token: token });
-    preview = (data as Preview | null) ?? null;
+  let preview: InvitePreview | null = null;
+  if (allow(await clientKey("invite"), 30, 60_000)) preview = await loadInvitePreview(token);
+  // Someone who just created an account sets up their name first, then comes straight back here.
+  if (userId && preview?.status === "pending" && !(await getMyProfile())) {
+    redirect(`/onboarding?next=${encodeURIComponent(`/invite/${token}`)}`);
   }
 
   const title = !preview

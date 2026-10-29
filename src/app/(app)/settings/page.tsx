@@ -30,8 +30,8 @@ export default async function SettingsPage() {
       <section>
         <SectionTitle className="mb-2">Members</SectionTitle>
         <p className="mb-4 text-[15px] text-ink-2">
-          Members see every ledger in this workspace. Owners and admins manage members; members add and edit entries; viewers can only look. To give a
-          contractor access to just their own ledger, invite them from that ledger instead.
+          Members see every ledger in this workspace. Owners and admins manage members; members add and edit entries; viewers can only look. To give someone
+          access to just one ledger, invite them from that ledger instead.
         </p>
         <MembersPanel
           members={(members ?? []) as Member[]}
@@ -53,7 +53,7 @@ export default async function SettingsPage() {
           <Link href="/settings/account" className="font-semibold underline underline-offset-4">Manage account</Link>
         </Card>
       </section>
-      <section>
+      <section id="new-workspace" className="scroll-mt-24">
         <SectionTitle className="mb-4">Another business?</SectionTitle>
         <NewWorkspace />
       </section>
