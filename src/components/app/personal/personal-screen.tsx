@@ -26,6 +26,7 @@ interface P {
   id: string;
   name: string;
   linked: boolean;
+  photo: string | null;
   isViewer: boolean;
   paid: string;
   share: string;
@@ -199,7 +200,7 @@ export function PersonalScreen({
           const net = toPaise(p.net);
           return (
             <div key={p.id} className="flex items-center gap-3 rounded-3xl bg-surface p-4 ring-1 ring-inset ring-line/70">
-              <Avatar name={p.name} tone={p.isViewer ? "ink" : "sunken"} className="size-11" />
+              <Avatar name={p.name} src={p.photo} tone={p.isViewer ? "ink" : "sunken"} className="size-11" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-semibold">
                   {p.name}
@@ -317,7 +318,7 @@ export function PersonalScreen({
           setCorrecting(null);
         }}
         ledgerId={ledger.id}
-        people={participants.map((p) => ({ id: p.id, name: p.name, isViewer: p.isViewer }))}
+        people={participants.map((p) => ({ id: p.id, name: p.name, isViewer: p.isViewer, photo: p.photo }))}
         today={today}
         correcting={correcting}
       />

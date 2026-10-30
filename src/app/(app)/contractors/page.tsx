@@ -1,5 +1,6 @@
 import { IntentLink } from "@/components/app/intent-link";
 import { FilterChips } from "@/components/app/pending-nav";
+import { loadPeople } from "@/lib/server/profiles";
 import { getWorkspace } from "@/lib/server/context";
 import { listContractors } from "@/lib/server/queries";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
@@ -23,15 +24,14 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
   const params = (await props.searchParams) as Record<string, string>;
   const show = FILTERS.some((f) => f.key === params.show) ? params.show : "all";
   const q = (params.q ?? "").trim().toLowerCase();
-  const [contractors, balances, advances, sharedRows, requests] = await Promise.all([
+  const [contractors, balances, advances, sharedRows] = await Promise.all([
     listContractors(ctx.db, ctx.workspace.id),
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, todayISO()),
     loadSharedAccountRows(ctx.db),
-    ctx.db.from("client_connections").select("contractor_id").eq("workspace_id", ctx.workspace.id).eq("status", "pending"),
   ]);
-  const requested = new Set((requests.data ?? []).map((r) => r.contractor_id as string));
   const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
+  const accounts = await loadPeople(ctx.db, contractors.map((c) => c.linked_user_id));
   const visible = contractors
     .filter((c) => (show === "inactive" ? !c.is_active : c.is_active && (show === "all" || c.kind === show)))
     .filter((c) => !q || c.name.toLowerCase().includes(q) || c.business_name?.toLowerCase().includes(q) || c.phone?.includes(q))
@@ -90,7 +90,12 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
               <li key={c.id}>
                 <IntentLink href={`/contractors/${c.id}`} className="flex h-full flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 hover:bg-white">
                   <div className="flex items-center gap-3">
-                    <Avatar name={c.name} className="size-12 text-base" tone={c.kind === "personal" ? "sunken" : "ink"} />
+                    <Avatar
+                      name={c.name}
+                      src={c.linked_user_id ? accounts.get(c.linked_user_id)?.photo : null}
+                      className="size-12 text-base"
+                      tone={c.kind === "personal" ? "sunken" : "ink"}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-lg font-semibold">{c.name}</div>
                       <div className="truncate text-sm text-ink-3">{c.business_name || c.phone || (c.kind === "personal" ? "Friend or family" : "Client")}</div>
@@ -110,7 +115,9 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
                         Advance <Money value={adv} className="font-semibold" />
                       </Badge>
                     )}
-                    {c.linked_user_id ? <Badge tone="in">Connected</Badge> : requested.has(c.id) && <Badge tone="warn">Request sent</Badge>}
+                    {c.linked_user_id && (
+                      <Badge tone="in">{accounts.get(c.linked_user_id)?.username ? `@${accounts.get(c.linked_user_id)!.username}` : "On Lekha"}</Badge>
+                    )}
                     {c.merged_into && <Badge>Merged</Badge>}
                   </div>
                 </IntentLink>

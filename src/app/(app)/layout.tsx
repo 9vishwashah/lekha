@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { UserButton } from "@clerk/nextjs";
+import { redirect } from "next/navigation";
 import { BottomNav, QuickAddButton, Sidebar } from "@/components/app/nav";
 import { WorkspaceSwitcher } from "@/components/app/workspace-switcher";
 import { Logo } from "@/components/app/logo";
 import { SwipeNav } from "@/components/app/swipe-nav";
 import { PendingNavProvider } from "@/components/app/pending-nav";
-import { WORKSPACE_COOKIE, getCollaborations, loadMemberships } from "@/lib/server/context";
+import { WORKSPACE_COOKIE, getCollaborations, getMyProfile, loadMemberships } from "@/lib/server/context";
+import { AccountMenu } from "@/components/app/account-menu";
+import { avatarUrl } from "@/lib/avatar";
 import { ServiceProblem } from "@/components/app/service-problem";
 import { SetupRequired, missingConfig } from "@/components/app/setup-required";
 
@@ -16,8 +18,11 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const missing = missingConfig();
   if (missing.length) return <SetupRequired missing={missing} />;
-  const [loaded, shared] = await Promise.all([loadMemberships(), getCollaborations()]);
+  const [loaded, shared, profile] = await Promise.all([loadMemberships(), getCollaborations(), getMyProfile()]);
   if (loaded.problem) return <ServiceProblem kind={loaded.problem.kind} code={loaded.problem.code} />;
+  // Everyone picks a username once; it is how people add each other.
+  if (!profile?.username) redirect("/onboarding");
+  const me = { name: profile.full_name, username: profile.username, photo: avatarUrl(profile.avatar_path) };
   const memberships = loaded.memberships;
   const chosen = (await cookies()).get(WORKSPACE_COOKIE)?.value;
   const current = memberships.find((m) => m.workspace.id === chosen) ?? memberships[0];
@@ -30,17 +35,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <Link href="/dashboard" className="px-3">
           <Logo />
         </Link>
-        {hasWorkspace && (
-          <div className="rounded-3xl bg-surface px-4 py-3 ring-1 ring-inset ring-line/70">
-            <div className="text-xs text-ink-3">Workspace</div>
-            <WorkspaceSwitcher current={current.workspace.id} options={options} />
-          </div>
-        )}
+        {hasWorkspace && <WorkspaceSwitcher current={current.workspace.id} options={options} />}
         {hasWorkspace && <QuickAddButton className="w-full" />}
         <Sidebar hasWorkspace={hasWorkspace} sharedCount={shared.length} />
-        <div className="mt-auto flex items-center gap-3 px-3">
-          <UserButton />
-          <span className="text-sm text-ink-2">Account</span>
+        <div className="mt-auto">
+          <AccountMenu name={me.name} username={me.username} photo={me.photo} />
         </div>
       </aside>
 
@@ -50,8 +49,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             <Logo compact />
           </Link>
           <div className="flex min-w-0 items-center gap-2">
-            {hasWorkspace && <WorkspaceSwitcher current={current.workspace.id} options={options} />}
-            <UserButton />
+            {hasWorkspace && <WorkspaceSwitcher current={current.workspace.id} options={options} compact />}
+            <AccountMenu name={me.name} username={me.username} photo={me.photo} compact />
           </div>
         </header>
         <main id="main" className="w-full min-w-0 flex-1 overflow-x-clip px-4 pb-32 pt-2 sm:px-6 lg:px-10 lg:pb-16 lg:pt-8">

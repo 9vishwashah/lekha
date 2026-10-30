@@ -57,20 +57,19 @@ export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; 
             {label}
           </IntentLink>
         ))}
-      {(sharedCount > 0 || !hasWorkspace) && (
-        <IntentLink
-          href="/shared"
-          aria-current={isActive(pathname, "/shared") ? "page" : undefined}
-          className={cn(
-            "flex h-11 items-center gap-3 rounded-full px-4 text-[15px] font-medium transition-colors",
-            isActive(pathname, "/shared") ? "bg-ink text-surface" : "text-ink-2 hover:bg-sunken hover:text-ink",
-          )}
-        >
-          <Share2 className="size-[18px]" />
-          Shared with me
-          {sharedCount > 0 && <span className="ml-auto text-xs opacity-70">{sharedCount}</span>}
-        </IntentLink>
-      )}
+      {/* Always listed: what other people share with you, even before anything is shared. */}
+      <IntentLink
+        href="/shared"
+        aria-current={isActive(pathname, "/shared") ? "page" : undefined}
+        className={cn(
+          "flex h-11 items-center gap-3 rounded-full px-4 text-[15px] font-medium transition-colors",
+          isActive(pathname, "/shared") ? "bg-ink text-surface" : "text-ink-2 hover:bg-sunken hover:text-ink",
+        )}
+      >
+        <Share2 className="size-[18px]" />
+        Shared with me
+        {sharedCount > 0 && <span className="ml-auto text-xs opacity-70">{sharedCount}</span>}
+      </IntentLink>
     </nav>
   );
 }

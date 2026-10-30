@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getMyProfile, getWorkspace } from "@/lib/server/context";
 import { ProfileForm } from "./profile-form";
+import { avatarUrl } from "@/lib/avatar";
+import { loadPeople } from "@/lib/server/profiles";
 import { PageHeader, SectionTitle, Card } from "@/components/ui/bits";
 import { WorkspaceSettingsForm, MembersPanel } from "./client";
 import { NewWorkspace } from "./new-workspace";
@@ -18,6 +20,8 @@ export default async function SettingsPage() {
     getMyProfile(),
   ]);
 
+  const people = await loadPeople(ctx.db, ((members ?? []) as Member[]).map((m) => m.user_id));
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-10">
       <PageHeader title="Settings" kicker={ctx.workspace.name} />
@@ -34,6 +38,7 @@ export default async function SettingsPage() {
           access to just one ledger, invite them from that ledger instead.
         </p>
         <MembersPanel
+          people={Object.fromEntries([...people].map(([id, p]) => [id, { username: p.username, photo: p.photo }]))}
           members={(members ?? []) as Member[]}
           invites={(invites ?? []).filter((i) => new Date(i.expires_at) > new Date())}
           me={ctx.userId}
@@ -43,7 +48,12 @@ export default async function SettingsPage() {
       <section id="profile" className="scroll-mt-24">
         <SectionTitle className="mb-4">Your profile</SectionTitle>
         <Card>
-          <ProfileForm name={profile?.full_name ?? ctx.displayName ?? ""} phone={profile?.phone ?? ""} />
+          <ProfileForm
+            name={profile?.full_name ?? ctx.displayName ?? ""}
+            phone={profile?.phone ?? ""}
+            username={profile?.username ?? null}
+            photo={avatarUrl(profile?.avatar_path)}
+          />
         </Card>
       </section>
       <section>

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { userDb } from "@/lib/supabase/server";
-import { getWorkspace, requireUser } from "@/lib/server/context";
+import { getMyProfile, getWorkspace, requireUser } from "@/lib/server/context";
 import { type ActionResult, fail } from "@/lib/server/errors";
 import { newToken, openToken, sealToken } from "@/lib/server/tokens";
 import { appUrl } from "@/lib/env";
@@ -13,14 +13,16 @@ import type { SharedPayload } from "@/lib/server/shared";
 import { loadShareCard, shareMessage, summarizeShare, whatsappNumber } from "@/lib/server/share-card";
 
 const uuid = z.string().uuid();
-const money = z
-  .string()
-  .trim()
+// Amounts arrive as text from forms, but as numbers when a form was filled from stored values.
+const text = z.union([z.string(), z.number().transform(String)]);
+const money = text
+  .pipe(z.string())
+  .transform((s) => s.trim())
   .transform((s) => s.replace(/,/g, ""))
   .pipe(z.string().regex(/^\d{1,12}(\.\d{1,2})?$/, "Enter an amount like 1500 or 1500.50"));
-const signedMoney = z
-  .string()
-  .trim()
+const signedMoney = text
+  .pipe(z.string())
+  .transform((s) => s.trim())
   .transform((s) => s.replace(/,/g, ""))
   .pipe(z.string().regex(/^-?\d{0,12}(\.\d{1,2})?$/, "Enter an amount like 1500 or -1500"));
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date");
@@ -62,8 +64,9 @@ export async function createLedger(_: unknown, form: FormData): Promise<ActionRe
     participant_client_ids: form.getAll("participant_client_ids").map(String).filter(Boolean),
   });
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields", fieldErrors: fieldErrors(parsed.error) };
-  const user = await currentUser();
-  const ownerName = user?.firstName || user?.fullName || user?.username || "You";
+  // Your real name: other people in a shared account see it ("You" is only ever shown on your own screen).
+  const [profile, user] = await Promise.all([getMyProfile(), currentUser()]);
+  const ownerName = profile?.full_name || ctx.displayName || user?.fullName || user?.firstName || user?.username || "Owner";
   if (parsed.data.ledger_type === "personal" && !parsed.data.participant_client_ids?.length) {
     return { ok: false, error: "Choose at least one other person", fieldErrors: { participant_client_ids: "Choose at least one other person" } };
   }

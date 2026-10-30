@@ -34,16 +34,28 @@ export const isTokenShape = (token: string) => /^[A-Za-z0-9_-]{32,128}$/.test(to
 /** An invitation page to return to after setup, or null. Nothing else is accepted as a return path. */
 export const inviteReturnPath = (v: unknown) => (typeof v === "string" && v.startsWith("/invite/") && isTokenShape(v.slice(8)) ? v : null);
 
-export async function loadShared(token: string): Promise<SharedPayload | null> {
-  if (!isTokenShape(token)) return null;
-  const { data, error } = await anonDb().rpc("get_shared_ledger", { p_token: token });
-  if (error || !data) return null;
+function normalise(data: unknown): SharedPayload {
   const payload = data as SharedPayload & { transactions: (Omit<StatementTxn, "txn_date" | "status"> & { date: string })[] };
   return {
     ...payload,
     // Public rows are always posted; normalise to the shared statement shape.
     transactions: payload.transactions.map((t) => ({ ...t, txn_date: t.date, status: "posted" as const })),
   };
+}
+
+export async function loadShared(token: string): Promise<SharedPayload | null> {
+  if (!isTokenShape(token)) return null;
+  const { data, error } = await anonDb().rpc("get_shared_ledger", { p_token: token });
+  if (error || !data) return null;
+  return normalise(data);
+}
+
+/** The ledger behind an open invitation, read-only (no tax details or references). */
+export async function loadInvitationLedger(token: string): Promise<SharedPayload | null> {
+  if (!isTokenShape(token)) return null;
+  const { data, error } = await anonDb().rpc("get_invitation_ledger", { p_token: token });
+  if (error || !data) return null;
+  return normalise(data);
 }
 
 export async function sharedVersion(token: string): Promise<string | null> {

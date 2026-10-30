@@ -124,12 +124,14 @@ export async function getPersonalLedger(db: Db, ledgerId: string) {
     for (const r of rows) map.set(r.shared_expense_id, [...(map.get(r.shared_expense_id) ?? []), r]);
     return map;
   };
-  const payerMap = group(payers);
-  const shareMap = group(shares);
+  // Postgres numerics come back as JSON numbers; the app (and its forms) treat money as text.
+  const t = (v: unknown) => (v === null || v === undefined ? null : String(v));
+  const payerMap = group(payers.map((p) => ({ ...p, amount_paid: t(p.amount_paid)! })));
+  const shareMap = group(shares.map((s) => ({ ...s, share_amount: t(s.share_amount)!, share_input: t(s.share_input) })));
   return {
     participants: (participants.data ?? []) as Participant[],
-    expenses: expenses.map((e) => ({ ...e, payers: payerMap.get(e.id) ?? [], shares: shareMap.get(e.id) ?? [] })) as SharedExpense[],
-    settlements,
+    expenses: expenses.map((e) => ({ ...e, total_amount: t(e.total_amount)!, payers: payerMap.get(e.id) ?? [], shares: shareMap.get(e.id) ?? [] })) as SharedExpense[],
+    settlements: settlements.map((s) => ({ ...s, amount: t(s.amount)! })),
   };
 }
 

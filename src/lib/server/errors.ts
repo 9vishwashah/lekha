@@ -17,7 +17,7 @@ export function friendly(error: PgError | null | undefined): string {
   if (!error) return "Something went wrong. Try again.";
   if (error.code && USER_FACING.has(error.code) && error.message) return error.message;
   if (error.code === "23505") {
-    return error.message?.includes("already been imported")
+    return error.message?.includes("already been imported") || error.message?.includes("is taken")
       ? error.message
       : "This looks like a duplicate of something already saved.";
   }
@@ -32,3 +32,6 @@ export function friendly(error: PgError | null | undefined): string {
 export function fail(error: PgError | string): ActionResult<never> {
   return { ok: false, error: typeof error === "string" ? error : friendly(error) };
 }
+
+/** The friendly text alone, for showing next to one field. */
+export const friendlyMessage = (error: PgError | null | undefined) => friendly(error);

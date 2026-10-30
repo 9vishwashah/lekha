@@ -27,8 +27,10 @@ export async function signInAs(page: Page, who: "A" | "B") {
   await page.goto("/dashboard");
   if (page.url().includes("/onboarding")) {
     await page.getByLabel("Your name").fill(who === "A" ? "Vishwa Test" : "Suraj Test");
+    await page.getByLabel("Username").fill(`e2e_${who.toLowerCase()}_${Date.now().toString(36)}`.slice(0, 20));
     await page.getByLabel("Mobile number").fill(who === "A" ? "9876543210" : "9123456780");
-    await page.getByLabel("Workspace name").fill(`E2E ${who} ${Date.now()}`);
+    const workspace = page.getByLabel(/Workspace name/);
+    if (await workspace.count()) await workspace.fill(`E2E ${who} ${Date.now()}`);
     await page.getByRole("button", { name: "Continue" }).click();
     await page.waitForURL("**/dashboard");
   }

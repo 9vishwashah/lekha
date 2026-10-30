@@ -75,4 +75,19 @@ describe("corrections", () => {
     const [after] = await as(db, ME, (q) => q<Record<string, string | null>>("select amount, txn_date::text, description, counterparty, notes from public.transactions where id = $1", [t.id]));
     expect(after).toEqual({ amount: "1750.00", txn_date: "2026-10-02", description: "Cement (25 bags)", counterparty: null, notes: null });
   });
+
+  it("accepts amounts the correction form filled from stored numbers", async () => {
+    const { db, ledger, people } = await setup();
+    await saveSharedExpense(null, {
+      ledger_id: ledger, txn_date: "2026-10-29", description: "Online", total_amount: "2000", split_method: "equal", category: "", payment_mode: "upi",
+      payers: [{ participant_id: people[1].id, amount: "2000" }], shares: people.map((p) => ({ participant_id: p.id })), idempotency_key: "key-numbers1",
+    });
+    const [saved] = await as(db, ME, (q) => q<{ id: string }>("select id from public.shared_expenses where ledger_id = $1", [ledger]));
+    const res = await saveSharedExpense(saved.id, {
+      ledger_id: ledger, txn_date: "2026-10-29", description: "Online", total_amount: 2000 as unknown as string, split_method: "exact", category: "Online", payment_mode: "upi",
+      payers: [{ participant_id: people[1].id, amount: 2000 as unknown as string }],
+      shares: [{ participant_id: people[0].id, input: 1000 as unknown as string }, { participant_id: people[1].id, input: 1000 as unknown as string }],
+    });
+    expect(res).toMatchObject({ ok: true, message: "Expense corrected" });
+  });
 });

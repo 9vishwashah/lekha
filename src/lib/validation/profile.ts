@@ -12,3 +12,10 @@ export const mobile = z
       .regex(/^(?:\+91)?[6-9]\d{9}$|^\+(?!91)\d{10,15}$/, "Enter a 10-digit mobile number, or +country code and number")
       .transform((s) => (s.startsWith("+") ? s : `+91${s}`)),
   );
+
+/** @username: 3–20 lowercase letters, numbers, dots or underscores; a leading @ is ignored. */
+export const username = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/^@/, "").toLowerCase())
+  .pipe(z.string().regex(/^[a-z0-9][a-z0-9_.]{2,19}$/, "Use 3–20 letters, numbers, dots or underscores"));

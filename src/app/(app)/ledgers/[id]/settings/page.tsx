@@ -7,6 +7,7 @@ import { getCollaborators, getLedger, getPersonalLedger, listContractors } from 
 import { ledgerAccess } from "@/lib/server/access";
 import { PageHeader } from "@/components/ui/bits";
 import { LedgerSettings } from "@/components/app/ledger-settings";
+import { loadPeople } from "@/lib/server/profiles";
 
 export const metadata = { title: "Ledger settings" };
 
@@ -30,6 +31,8 @@ export default async function LedgerSettingsPage(props: PageProps<"/ledgers/[id]
     ledger.ledger_type === "personal" ? getPersonalLedger(db, id) : Promise.resolve(null),
   ]);
 
+  const people = await loadPeople(db, [...collaborators.map((c) => c.user_id), ...(personal?.participants ?? []).map((p) => p.user_id)]);
+
   return (
     <div className="mx-auto max-w-3xl">
       <Link href={`/ledgers/${id}`} className="inline-flex h-11 items-center gap-2 text-sm font-medium text-ink-2 hover:text-ink">
@@ -42,6 +45,7 @@ export default async function LedgerSettingsPage(props: PageProps<"/ledgers/[id]
         collaborators={collaborators}
         invitations={(invitations.data ?? []).filter((i) => new Date(i.expires_at) > new Date())}
         participants={personal?.participants ?? []}
+        people={Object.fromEntries([...people].map(([uid, p]) => [uid, { username: p.username, photo: p.photo }]))}
       />
     </div>
   );

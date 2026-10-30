@@ -18,6 +18,7 @@ interface Person {
   id: string;
   name: string;
   isViewer: boolean;
+  photo?: string | null;
 }
 
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
@@ -27,7 +28,10 @@ const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? 
  * server, which recomputes the shares before the database checks they add up to the total.
  */
 /** "40.0000" → "40", "250.50" → "250.5": stored numbers shown the way people type them. */
-const plain = (v: string) => (v.includes(".") ? v.replace(/\.?0+$/, "") : v);
+const plain = (value: string | number | null) => {
+  const v = value === null ? "" : String(value);
+  return v.includes(".") ? v.replace(/\.?0+$/, "") : v;
+};
 
 export function SplitComposer({
   open,
@@ -50,19 +54,19 @@ export function SplitComposer({
   // Remounted (key) per expense being corrected, so state starts from that record.
   const c = correcting ?? null;
   const [description, setDescription] = useState(c?.description ?? "");
-  const [total, setTotal] = useState(c?.total_amount ?? "");
+  const [total, setTotal] = useState(c ? plain(c.total_amount) : "");
   const [date, setDate] = useState(c?.txn_date ?? today);
   const [method, setMethod] = useState<SplitMethod>(c?.split_method ?? "equal");
   const [payerMode, setPayerMode] = useState<"single" | "multi">(c && c.payers.length > 1 ? "multi" : "single");
   const [payer, setPayer] = useState(c?.payers.length === 1 ? c.payers[0].participant_id : (me?.id ?? ""));
   const [paid, setPaid] = useState<Record<string, string>>(
-    c && c.payers.length > 1 ? Object.fromEntries(c.payers.map((p) => [p.participant_id, p.amount_paid])) : {},
+    c && c.payers.length > 1 ? Object.fromEntries(c.payers.map((p) => [p.participant_id, plain(p.amount_paid)])) : {},
   );
   const [included, setIncluded] = useState<Record<string, boolean>>(
     Object.fromEntries(people.map((p) => [p.id, c ? c.shares.some((s) => s.participant_id === p.id) : true])),
   );
   const [inputs, setInputs] = useState<Record<string, string>>(
-    c ? Object.fromEntries(c.shares.map((s) => [s.participant_id, plain(c.split_method === "exact" ? s.share_amount : (s.share_input ?? ""))])) : {},
+    c ? Object.fromEntries(c.shares.map((s) => [s.participant_id, plain(c.split_method === "exact" ? s.share_amount : s.share_input)])) : {},
   );
   const [category, setCategory] = useState(c?.category ?? "");
   const [paymentMode, setPaymentMode] = useState<string>(c?.payment_mode ?? "");
@@ -179,7 +183,7 @@ export function SplitComposer({
                     payer === p.id ? "bg-ink text-surface ring-ink" : "bg-white ring-line",
                   )}
                 >
-                  <Avatar name={p.name} className="size-9" tone={payer === p.id ? "light" : "sunken"} />
+                  <Avatar name={p.name} src={p.photo} className="size-9" tone={payer === p.id ? "light" : "sunken"} />
                   {p.isViewer ? "You" : p.name}
                 </button>
               ))}
@@ -188,7 +192,7 @@ export function SplitComposer({
             <div className="flex flex-col gap-2">
               {people.map((p) => (
                 <div key={p.id} className="flex items-center gap-3">
-                  <Avatar name={p.name} />
+                  <Avatar name={p.name} src={p.photo} />
                   <label htmlFor={`paid-${p.id}`} className="w-24 truncate text-[15px] font-medium">
                     {p.isViewer ? "You" : p.name}
                   </label>
@@ -229,7 +233,7 @@ export function SplitComposer({
                     onChange={(e) => setIncluded({ ...included, [p.id]: e.target.checked })}
                     className="ml-2 size-5 accent-[#1d1d1b]"
                   />
-                  <Avatar name={p.name} className="size-9" />
+                  <Avatar name={p.name} src={p.photo} className="size-9" />
                   <span className="min-w-0 flex-1 truncate font-medium">{p.isViewer ? "You" : p.name}</span>
                   {method !== "equal" && included[p.id] && (
                     <label className="sr-only" htmlFor={`share-${p.id}`}>

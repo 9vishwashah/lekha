@@ -11,6 +11,7 @@ export interface InvitePreview {
   workspace_name: string | null;
   participant_name: string | null;
   invited_by: string | null;
+  invited_by_avatar: string | null;
   role: string | null;
   permissions: Record<string, boolean>;
 }

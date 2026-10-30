@@ -2,7 +2,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy, MessageCircle, UserPlus } from "lucide-react";
+import { Copy, Link2, MessageCircle } from "lucide-react";
 import {
   addParticipant,
   inviteCollaborator,
@@ -19,6 +19,8 @@ import { Avatar, Badge, Card, SectionTitle } from "@/components/ui/bits";
 import { Segmented } from "@/components/ui/segmented";
 import { whatsappUrl } from "./share-sheet";
 import { ClientPicker, type ClientOption } from "./client-picker";
+import { AddByUsername } from "./add-by-username";
+import { addToLedgerByUsername } from "@/app/(app)/actions/people";
 import { formatDateTime } from "@/lib/domain/dates";
 import type { Collaborator, Ledger, Participant } from "@/lib/types";
 
@@ -37,12 +39,15 @@ export function LedgerSettings({
   collaborators,
   invitations,
   participants,
+  people,
 }: {
   ledger: Ledger;
   contractors: ClientOption[];
   collaborators: Collaborator[];
   invitations: { id: string; email: string | null; participant_id: string | null; status: string; expires_at: string; created_at: string }[];
   participants: Participant[];
+  /** Usernames and photos of people with a Lekha account, by user id. */
+  people: Record<string, { username: string | null; photo: string | null }>;
 }) {
   const router = useRouter();
   const personal = ledger.ledger_type === "personal";
@@ -56,15 +61,15 @@ export function LedgerSettings({
     can_view_tax: false,
     can_attach: false,
   });
-  const [email, setEmail] = useState("");
-  const [participantId, setParticipantId] = useState(participants.find((p) => !p.user_id)?.id ?? "");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
   const active = collaborators.filter((c) => c.status === "active");
 
   const invite = () =>
     start(async () => {
-      const res = await inviteCollaborator(ledger.id, { ...perms, email, participant_id: personal ? participantId : "" });
+      // Invitees join as themselves; nobody picks "who they are" in advance.
+      const res = await inviteCollaborator(ledger.id, { ...perms, email: "", participant_id: "" });
       if (!res.ok) return void toast.error(res.error);
       setInviteUrl(res.data!.url);
       router.refresh();
@@ -155,7 +160,7 @@ export function LedgerSettings({
             <ul className="divide-y divide-line">
               {participants.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 py-3">
-                  <Avatar name={p.display_name} />
+                  <Avatar name={p.display_name} src={p.user_id ? people[p.user_id]?.photo : null} />
                   <span className="flex-1 font-medium">
                     {p.contractor_id ? (
                       <a href={`/contractors/${p.contractor_id}`} className="underline-offset-4 hover:underline">
@@ -165,7 +170,7 @@ export function LedgerSettings({
                       `${p.display_name} (you)`
                     )}
                   </span>
-                  <Badge tone={p.user_id ? "in" : "neutral"}>{p.user_id ? "Joined" : "Not joined"}</Badge>
+                  <Badge tone={p.user_id ? "in" : "neutral"}>{p.user_id ? (people[p.user_id]?.username ? `@${people[p.user_id].username}` : "On Lekha") : "Not on Lekha"}</Badge>
                 </li>
               ))}
             </ul>
@@ -186,10 +191,10 @@ export function LedgerSettings({
       )}
 
       <section>
-        <SectionTitle className="mb-2">Who can edit</SectionTitle>
+        <SectionTitle className="mb-2">People with access</SectionTitle>
         <p className="mb-4 max-w-prose text-[15px] text-ink-2">
-          Share links are view-only. To let {personal ? "someone see their own side and add expenses" : "a contractor add or correct entries"}, send them an
-          invitation. They sign in with their own account, and you can remove access at any time.
+          Add someone by their Lekha username and they see this {personal ? "account" : "ledger"} in Shared with me straight away. Not on Lekha yet?
+          Send an invite link: they see it read-only, sign up, and join. You can remove access at any time.
         </p>
         <Card className="flex flex-col gap-5">
           {active.length > 0 && (
@@ -197,12 +202,11 @@ export function LedgerSettings({
               {active.map((c) => (
                 <li key={c.id} className="flex flex-col gap-3 py-4 first:pt-0">
                   <div className="flex items-center gap-3">
-                    <Avatar name={c.display_name ?? c.email ?? "?"} />
+                    <Avatar name={c.display_name ?? c.email ?? "?"} src={people[c.user_id]?.photo} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-semibold">{c.display_name ?? "Collaborator"}</div>
                       <div className="truncate text-[13px] text-ink-3">
-                        {c.email ?? ""} · since {formatDateTime(c.created_at)}
-                        {c.participant_id && ` · is ${participants.find((p) => p.id === c.participant_id)?.display_name}`}
+                        {people[c.user_id]?.username ? `@${people[c.user_id].username}` : (c.email ?? "")} · since {formatDateTime(c.created_at)}
                       </div>
                     </div>
                     <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => revokeCollaborator(c.id, ledger.id))}>
@@ -210,7 +214,7 @@ export function LedgerSettings({
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-x-5">
-                    {PERMS.filter((x) => personal ? x.key !== "can_view_tax" : true).map((perm) => (
+                    {PERMS.filter((x) => (personal ? x.key !== "can_view_tax" : true)).map((perm) => (
                       <Checkbox
                         key={perm.key}
                         label={perm.label}
@@ -226,72 +230,69 @@ export function LedgerSettings({
           )}
 
           <div className="flex flex-col gap-4 rounded-[24px] bg-canvas p-4">
-            <h3 className="flex items-center gap-2 font-semibold">
-              <UserPlus className="size-4" /> New invitation
-            </h3>
-            {personal && (
-              <Field label="They join as">
-                {(p) => (
-                  <Select {...p} value={participantId} onChange={(e) => setParticipantId(e.target.value)}>
-                    {participants
-                      .filter((x) => !x.user_id)
-                      .map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.display_name}
-                        </option>
-                      ))}
-                    {participants.every((x) => x.user_id) && <option value="">Everyone has joined</option>}
-                  </Select>
-                )}
-              </Field>
-            )}
-            <Field label="Their email" optional hint="For your reference. The invitation works for whoever opens the link and signs in, once.">
-              {(p) => <Input {...p} type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={200} />}
-            </Field>
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium text-ink-2">They can</legend>
-              {PERMS.filter((x) => (personal ? x.key !== "can_view_tax" : true)).map((perm) => (
-                <Checkbox
-                  key={perm.key}
-                  label={perm.label}
-                  hint={perm.hint}
-                  checked={perms[perm.key]}
-                  onChange={(e) => setPerms({ ...perms, [perm.key]: e.target.checked })}
-                />
-              ))}
-              <p className="mt-1 text-[13px] text-ink-3">With nothing ticked they can only view this one ledger.</p>
-            </fieldset>
-            <Button onClick={invite} disabled={pending || (personal && !participantId)} className="self-start">
-              Create invitation link
-            </Button>
-            {inviteUrl && (
-              <div className="rounded-2xl bg-ink p-4 text-seashell">
-                <p className="break-all font-mono text-[13px]">{inviteUrl}</p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <a
-                    href={whatsappUrl(`You're invited to the ledger "${ledger.name}" on Lekha. Open this link and sign in to join: ${inviteUrl}`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-mustard font-medium text-ink"
-                  >
-                    <MessageCircle className="size-4" /> WhatsApp
-                  </a>
-                  <Button
-                    variant="light"
-                    size="sm"
-                    className="h-11"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(inviteUrl);
-                      toast.success("Invitation copied");
-                    }}
-                  >
-                    <Copy className="size-4" /> Copy
-                  </Button>
-                </div>
-                <p className="mt-2 text-[12px] opacity-70">Shown once. Works for one person, expires in 14 days.</p>
-              </div>
+            <AddByUsername
+              label="Add someone by username"
+              onAdd={async (username) => {
+                const res = await addToLedgerByUsername(ledger.id, username, personal ? {} : perms);
+                if (!res.ok) {
+                  toast.error(res.error);
+                  return false;
+                }
+                toast.success(res.message ?? "Added");
+                router.refresh();
+                return true;
+              }}
+              extra={personal ? undefined : <PermPicker perms={perms} setPerms={setPerms} personal={personal} />}
+              onInviteLink={() => setLinkOpen(true)}
+            />
+            {!linkOpen && (
+              <button type="button" onClick={() => setLinkOpen(true)} className="self-start text-sm font-medium text-ink-2 underline underline-offset-4">
+                Not on Lekha yet? Create an invite link
+              </button>
             )}
           </div>
+
+          {linkOpen && (
+            <div className="flex flex-col gap-4 rounded-[24px] bg-canvas p-4">
+              <h3 className="flex items-center gap-2 font-semibold">
+                <Link2 className="size-4" /> Invite link
+              </h3>
+              <p className="text-[14px] text-ink-2">
+                The link opens this {personal ? "account" : "ledger"} read-only with a sign-up button. After signing up they join as themselves.
+              </p>
+              <PermPicker perms={perms} setPerms={setPerms} personal={personal} />
+              <Button onClick={invite} disabled={pending} className="self-start">
+                {pending ? "Creating…" : "Create invite link"}
+              </Button>
+              {inviteUrl && (
+                <div className="rounded-2xl bg-ink p-4 text-seashell">
+                  <p className="break-all font-mono text-[13px]">{inviteUrl}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <a
+                      href={whatsappUrl(`Hi! I’ve added you to “${ledger.name}” on Lekha. Open the link to see it, then sign up to join: ${inviteUrl}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-mustard font-medium text-ink"
+                    >
+                      <MessageCircle className="size-4" /> WhatsApp
+                    </a>
+                    <Button
+                      variant="light"
+                      size="sm"
+                      className="h-11"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(inviteUrl);
+                        toast.success("Invite link copied");
+                      }}
+                    >
+                      <Copy className="size-4" /> Copy
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[12px] opacity-70">Shown once. Works for one person, expires in 14 days.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {invitations.length > 0 && (
             <div>
@@ -300,7 +301,7 @@ export function LedgerSettings({
                 {invitations.map((i) => (
                   <li key={i.id} className="flex items-center justify-between gap-3 py-3 text-[15px]">
                     <span className="min-w-0 truncate">
-                      {i.email ?? (i.participant_id ? participants.find((p) => p.id === i.participant_id)?.display_name : "Link invitation")}
+                      {i.email ?? (i.participant_id ? participants.find((p) => p.id === i.participant_id)?.display_name : "Invite link")}
                       <span className="block text-[13px] text-ink-3">Expires {formatDateTime(i.expires_at)}</span>
                     </span>
                     <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => revokeLedgerInvitation(i.id, ledger.id))}>
@@ -335,5 +336,23 @@ export function LedgerSettings({
         </Card>
       </section>
     </div>
+  );
+}
+
+function PermPicker({ perms, setPerms, personal }: { perms: Perms; setPerms: (p: Perms) => void; personal: boolean }) {
+  return (
+    <fieldset>
+      <legend className="mb-1 text-sm font-medium text-ink-2">They can</legend>
+      {PERMS.filter((x) => (personal ? x.key !== "can_view_tax" : true)).map((perm) => (
+        <Checkbox
+          key={perm.key}
+          label={perm.label}
+          hint={perm.hint}
+          checked={perms[perm.key]}
+          onChange={(e) => setPerms({ ...perms, [perm.key]: e.target.checked })}
+        />
+      ))}
+      <p className="mt-1 text-[13px] text-ink-3">With nothing ticked they can only view.</p>
+    </fieldset>
   );
 }

@@ -1,9 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import { Logo } from "@/components/app/logo";
-import Link from "next/link";
-import { getCollaborations, getConnectionRequests, getMyProfile, loadMemberships } from "@/lib/server/context";
-import { ConnectionRequests } from "@/components/app/connection-requests";
+import { getCollaborations, getMyProfile, loadMemberships } from "@/lib/server/context";
 import { inviteReturnPath } from "@/lib/server/shared";
 import { ServiceProblem } from "@/components/app/service-problem";
 import { OnboardingForm } from "./form";
@@ -22,24 +21,26 @@ export default async function Onboarding(props: PageProps<"/onboarding">) {
   const loaded = await loadMemberships();
   if (loaded.problem) return <ServiceProblem kind={loaded.problem.kind} code={loaded.problem.code} />;
   const hasWorkspace = loaded.memberships.length > 0;
-  const [user, profile, requests, shared] = await Promise.all([currentUser(), getMyProfile(), getConnectionRequests(), getCollaborations()]);
-  if (next && profile) redirect(next);
-  if (!next && hasWorkspace) redirect("/dashboard");
+  const [user, profile, shared] = await Promise.all([currentUser(), getMyProfile(), getCollaborations()]);
+  // Setup is done once you have a username (and a workspace, unless you only use what's shared with you).
+  const ready = Boolean(profile?.username);
+  if (next && ready) redirect(next);
+  if (!next && ready && hasWorkspace) redirect("/dashboard");
   const knownName = profile?.full_name || user?.fullName || [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "";
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-10 px-4 py-[max(1.5rem,env(safe-area-inset-top))]">
       <Logo />
       <div className="animate-rise">
-        <h1 className="display text-5xl font-extrabold sm:text-6xl">{next ? "First, who are you?" : "Let’s set you up"}</h1>
+        <h1 className="display text-5xl font-extrabold sm:text-6xl">{next ? "First, who are you?" : hasWorkspace ? "Pick your username" : "Let’s set you up"}</h1>
         <p className="mt-3 text-lg text-ink-2">
           {next
-            ? "Add your name so the person who invited you knows it’s you. Then you’ll go straight back to the invitation."
-            : "Your workspace is your private book. Clients, ledgers and expenses live here, and nobody else sees them unless you invite them."}
+            ? "Add your name and a username so people know it’s you. Then you’ll go straight back to the invitation."
+            : hasWorkspace
+              ? "People add you to their ledgers and shared accounts by your @username. Pick one once; you can change it in Settings."
+              : "Your workspace is your private book. Clients, ledgers and expenses live here, and nobody else sees them unless you invite them."}
         </p>
       </div>
-      {/* Someone who signed up because a person sent them a connect request answers it here first. */}
-      <ConnectionRequests requests={requests} />
       {!next && shared.length > 0 && (
         <p className="-mt-4 text-[15px] text-ink-2">
           Only here for what’s shared with you?{" "}
@@ -49,7 +50,14 @@ export default async function Onboarding(props: PageProps<"/onboarding">) {
           . You can set up your own books any time.
         </p>
       )}
-      <OnboardingForm defaultName={knownName} defaultPhone={profile?.phone ?? ""} next={next} askWorkspace={!hasWorkspace} />
+      <OnboardingForm
+        defaultName={knownName}
+        defaultPhone={profile?.phone ?? ""}
+        defaultUsername={profile?.username ?? ""}
+        next={next}
+        askWorkspace={!hasWorkspace}
+        workspaceOptional={Boolean(next) || shared.length > 0}
+      />
     </div>
   );
 }

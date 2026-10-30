@@ -104,7 +104,18 @@ export function EmptyState({
   );
 }
 
-export function Avatar({ name, className, tone = "sunken" }: { name: string; className?: string; tone?: "sunken" | "ink" | "light" }) {
+/** A person: their profile photo when they have one, otherwise their initials. */
+export function Avatar({
+  name,
+  className,
+  tone = "sunken",
+  src,
+}: {
+  name: string;
+  className?: string;
+  tone?: "sunken" | "ink" | "light";
+  src?: string | null;
+}) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -115,14 +126,19 @@ export function Avatar({ name, className, tone = "sunken" }: { name: string; cla
     <span
       aria-hidden
       className={cn(
-        "inline-flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
+        "inline-flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold",
         tone === "sunken" && "bg-sunken text-ink",
         tone === "ink" && "bg-ink text-surface",
         tone === "light" && "bg-white/70 text-ink",
         className,
       )}
     >
-      {initials || "?"}
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- small public photo; no image optimisation needed
+        <img src={src} alt="" className="size-full object-cover" loading="lazy" decoding="async" />
+      ) : (
+        initials || "?"
+      )}
     </span>
   );
 }

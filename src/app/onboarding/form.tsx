@@ -3,6 +3,7 @@ import { useActionState, useState } from "react";
 import { createWorkspace } from "@/app/(app)/actions/workspace";
 import { Field, Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { UsernameField, suggestUsername } from "@/components/app/username-field";
 
 const suggestWorkspace = (name: string) => {
   const first = name.trim().split(/\s+/)[0];
@@ -12,20 +13,27 @@ const suggestWorkspace = (name: string) => {
 export function OnboardingForm({
   defaultName,
   defaultPhone,
+  defaultUsername,
   next,
   askWorkspace,
+  workspaceOptional,
 }: {
   defaultName: string;
   defaultPhone: string;
-  /** The invitation to return to; the workspace becomes optional. */
+  defaultUsername: string;
+  /** The invitation to return to. */
   next: string | null;
   askWorkspace: boolean;
+  /** Invited people, or people who only use what's shared with them, may skip their own workspace. */
+  workspaceOptional: boolean;
 }) {
   const [state, action, pending] = useActionState(createWorkspace, null);
   const [name, setName] = useState(defaultName);
   // From an invitation the workspace starts empty: joining someone's ledger doesn't need one.
-  const [workspace, setWorkspace] = useState(next ? "" : suggestWorkspace(defaultName));
+  const [workspace, setWorkspace] = useState(workspaceOptional ? "" : suggestWorkspace(defaultName));
   const [touched, setTouched] = useState(false);
+  const [handle, setHandle] = useState(defaultUsername || suggestUsername(defaultName));
+  const [handleTouched, setHandleTouched] = useState(Boolean(defaultUsername));
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   return (
@@ -39,7 +47,8 @@ export function OnboardingForm({
             value={name}
             onChange={(e) => {
               setName(e.target.value);
-              if (!touched && !next) setWorkspace(suggestWorkspace(e.target.value));
+              if (!touched && !workspaceOptional) setWorkspace(suggestWorkspace(e.target.value));
+              if (!handleTouched) setHandle(suggestUsername(e.target.value));
             }}
             autoComplete="name"
             required
@@ -48,6 +57,15 @@ export function OnboardingForm({
           />
         )}
       </Field>
+      <UsernameField
+        value={handle}
+        onChange={(v) => {
+          setHandleTouched(true);
+          setHandle(v);
+        }}
+        current={defaultUsername || null}
+        error={err("username")}
+      />
       <Field label="Mobile number" hint="Private to you. Not shown to anyone you share with." error={err("phone")}>
         {(p) => (
           <div className="relative">
@@ -72,8 +90,8 @@ export function OnboardingForm({
       {askWorkspace && (
         <Field
           label="Workspace name"
-          optional={Boolean(next)}
-          hint={next ? "Only if you also want your own books. You can create one later in Settings." : "Usually your business or firm name. You can change it later."}
+          optional={workspaceOptional}
+          hint={workspaceOptional ? "Only if you also want your own books. You can create one later in Settings." : "Usually your business or firm name. You can change it later."}
           error={err("name")}
         >
           {(p) => (
@@ -85,7 +103,7 @@ export function OnboardingForm({
                 setTouched(true);
                 setWorkspace(e.target.value);
               }}
-              required={!next}
+              required={!workspaceOptional}
               maxLength={120}
             />
           )}

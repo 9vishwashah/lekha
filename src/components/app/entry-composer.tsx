@@ -75,7 +75,7 @@ export function EntryComposer({
   const t0 = editingTax ?? null;
   const [mode, setMode] = useState<Mode>(editing?.kind === "invoice" ? "bill" : "payment");
   const [direction, setDirection] = useState<"in" | "out">(editing?.direction ?? "out");
-  const [amount, setAmount] = useState(editing?.amount ?? "");
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
   const [date, setDate] = useState(editing?.txn_date ?? today);
   const [description, setDescription] = useState(editing?.description ?? "");
   const [counterparty, setCounterparty] = useState(editing?.counterparty ?? "");
@@ -90,7 +90,7 @@ export function EntryComposer({
   const [key, setKey] = useState(newKey);
 
   // Tax inputs
-  const [taxable, setTaxable] = useState(t0?.taxable_amount ?? "");
+  const [taxable, setTaxable] = useState(t0 ? String(t0.taxable_amount) : "");
   const [gstOn, setGstOn] = useState(t0 ? t0.gst_applicable : true);
   const [gstType, setGstType] = useState<"intra" | "inter">(t0 ? (t0.gst_type === "inter" ? "inter" : "intra") : ledger.gst_mode);
   const [gstRate, setGstRate] = useState(t0 ? String(Number(t0.gst_rate)) : taxDefaults.gstRate);

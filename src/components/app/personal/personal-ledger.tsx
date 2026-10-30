@@ -4,6 +4,8 @@ import { participantBalances, simplifyDebts } from "@/lib/domain/split";
 import { toDecimal } from "@/lib/domain/money";
 import type { Ledger } from "@/lib/types";
 import { PersonalScreen } from "./personal-screen";
+import { userDb } from "@/lib/supabase/server";
+import { loadPeople } from "@/lib/server/profiles";
 
 /**
  * Server half of a shared account: loads the one canonical set of expenses and repayments and
@@ -30,6 +32,8 @@ export async function PersonalLedger({
   const balances = participantBalances(ids, data.expenses, data.settlements);
   const debts = simplifyDebts(balances, ids);
   const viewer = data.participants.find((p) => p.user_id === userId) ?? null;
+  // Profile photos of everyone in the account who is on Lekha.
+  const accounts = await loadPeople(await userDb(), data.participants.map((p) => p.user_id));
 
   return (
     <PersonalScreen
@@ -40,6 +44,7 @@ export async function PersonalLedger({
           id: p.id,
           name: p.display_name,
           linked: Boolean(p.user_id),
+          photo: p.user_id ? (accounts.get(p.user_id)?.photo ?? null) : null,
           isViewer: p.id === viewer?.id,
           paid: toDecimal(b.paid),
           share: toDecimal(b.share),

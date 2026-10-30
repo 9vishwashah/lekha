@@ -16,6 +16,7 @@ import { WalletCard } from "@/components/app/wallet-card";
 import { ContractorActions } from "./actions";
 import { ConnectCard } from "./connect";
 import { whatsappNumber } from "@/lib/server/share-card";
+import { loadPeople } from "@/lib/server/profiles";
 
 export default async function ContractorPage(props: PageProps<"/contractors/[id]">) {
   const ctx = await getWorkspace();
@@ -23,7 +24,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   if (!isUuid(id)) notFound();
   const today = todayISO();
   // One parallel round; this client comes from the same list the merge picker needs.
-  const [balances, advances, all, recent, taxIds, sharedRows, request] = await Promise.all([
+  const [balances, advances, all, recent, taxIds, sharedRows] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, today),
     listContractors(ctx.db, ctx.workspace.id),
@@ -36,10 +37,10 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       .limit(10),
     ctx.canWrite ? ctx.db.rpc("contractor_tax_ids", { p_contractor: id }) : Promise.resolve({ data: null }),
     loadSharedAccountRows(ctx.db),
-    ctx.db.from("client_connections").select("email, created_at").eq("contractor_id", id).eq("status", "pending").maybeSingle(),
   ]);
   const c = all.find((x) => x.id === id);
   if (!c) notFound();
+  const account = c.linked_user_id ? ((await loadPeople(ctx.db, [c.linked_user_id])).get(c.linked_user_id) ?? null) : null;
   const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows).byClient.get(id);
   const overall = net(position);
   const sharedLedgerIds = new Set(sharedRows.participants.filter((p) => p.contractor_id === id).map((p) => p.ledger_id));
@@ -64,7 +65,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
 
       <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex items-center gap-4">
-          <Avatar name={c.name} tone="ink" className="size-16 text-xl" />
+          <Avatar name={c.name} src={account?.photo} tone="ink" className="size-16 text-xl" />
           <div className="min-w-0">
             <h1 className="display text-[2.4rem] font-extrabold sm:text-6xl">{c.name}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-ink-2">
@@ -98,8 +99,8 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       </div>
 
       <ConnectCard
-        contractor={{ id: c.id, name: c.name, email: c.email, linked_user_id: c.linked_user_id }}
-        pending={(request.data as { email: string; created_at: string } | null) ?? null}
+        contractor={{ id: c.id, name: c.name }}
+        account={account ?? (c.linked_user_id ? { username: null, fullName: c.name, photo: null } : null)}
         canWrite={ctx.canWrite && c.is_active}
         whatsappTo={whatsappNumber(c.phone)}
       />

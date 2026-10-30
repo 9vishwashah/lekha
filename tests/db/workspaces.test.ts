@@ -20,6 +20,7 @@ vi.mock("@/lib/server/context", () => ({
   WORKSPACE_COOKIE: "lekha_ws",
   requireUser: async () => ME,
   getMemberships: async () => [],
+  getCollaborations: async () => [],
   getWorkspace: async () => ({}),
   getMyProfile: async () => (await as(live.db!, ME, (q) => q<{ full_name: string; phone: string }>("select full_name, phone from public.user_profiles")))[0] ?? null,
 }));
@@ -56,7 +57,7 @@ const myWorkspaces = () => as(live.db!, ME, (q) => q<{ name: string; display_nam
 describe("workspaces", () => {
   it("first setup, then another business from Settings with just a name", async () => {
     live.db = await createDb();
-    expect(await run({ full_name: "Vishwa Shah", phone: "98765 43210", name: "VJAS" })).toEqual({ redirect: "/dashboard" });
+    expect(await run({ full_name: "Vishwa Shah", phone: "98765 43210", username: "@Vishwa", name: "VJAS" })).toEqual({ redirect: "/dashboard" });
     const first = cookieJar.get("lekha_ws");
 
     // "Another business?" sends only the workspace name.
@@ -74,9 +75,11 @@ describe("workspaces", () => {
   it("setup from an invitation may skip the workspace and returns to the invitation", async () => {
     live.db = await createDb();
     const next = `/invite/${"a".repeat(40)}`;
-    expect(await run({ full_name: "Suraj", phone: "9123456780", name: "", next })).toEqual({ redirect: next });
+    expect(await run({ full_name: "Suraj", phone: "9123456780", username: "suraj", name: "", next })).toEqual({ redirect: next });
     expect(await myWorkspaces()).toEqual([]);
+    const [me] = await as(live.db!, ME, (q) => q<{ username: string }>("select username from public.user_profiles"));
+    expect(me.username).toBe("suraj");
     // Anything other than an invitation is ignored as a return path.
-    expect(await run({ full_name: "Suraj", phone: "9123456780", name: "", next: "https://evil.example" })).toMatchObject({ result: { ok: false } });
+    expect(await run({ full_name: "Suraj", phone: "9123456780", username: "suraj", name: "", next: "https://evil.example" })).toMatchObject({ result: { ok: false } });
   });
 });

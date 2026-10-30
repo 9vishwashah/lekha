@@ -8,9 +8,11 @@ import { computeShares, type SplitMethod } from "@/lib/domain/split";
 import { toDecimal, toPaise, MoneyError } from "@/lib/domain/money";
 
 const uuid = z.string().uuid();
-const money = z
-  .string()
-  .trim()
+// Amounts arrive as text from forms, but as numbers when a form was filled from stored values.
+const text = z.union([z.string(), z.number().transform(String)]);
+const money = text
+  .pipe(z.string())
+  .transform((s) => s.trim())
   .transform((s) => s.replace(/,/g, ""))
   .pipe(z.string().regex(/^\d{1,12}(\.\d{1,2})?$/, "Enter an amount like 1500 or 1500.50"));
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date");
@@ -240,7 +242,7 @@ const sharedExpenseSchema = z.object({
   reference_no: optionalText(80),
   notes: optionalText(2000),
   payers: z.array(z.object({ participant_id: uuid, amount: money })).min(1, "Choose who paid"),
-  shares: z.array(z.object({ participant_id: uuid, input: z.string().trim().max(20).optional() })).min(1, "Choose who shares it"),
+  shares: z.array(z.object({ participant_id: uuid, input: text.pipe(z.string().trim().max(20)).optional() })).min(1, "Choose who shares it"),
   idempotency_key: z.string().min(8).max(120).optional(),
 });
 
