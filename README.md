@@ -93,6 +93,16 @@ Optional sample data for a scratch database: `supabase/seed.sql` (instructions i
 | `SHARE_LINK_SECRET` | 32 random bytes, base64. Encrypts share tokens so an owner can copy an active link again. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Rotating it makes existing links uncopyable (they keep working; create a new link to share again). |
 | `E2E_USER_A_*`, `E2E_USER_B_*` | Two Clerk test users for the Playwright suite |
 
+## Invoices
+
+Create invoices in Lekha (service, project, product, GST, proforma, custom) or upload one you already made, then share a secure link on WhatsApp. The client needs no account.
+
+- **One payment, one record.** `invoice_payments` is the only place a payment lives. A confirmed payment posts one cash receipt to the linked ledger; issuing posts one non-cash receivable. Entries an invoice owns can only change from the invoice, so the two can never drift apart.
+- **No payment gateway.** UPI QR and bank details start a payment; they never prove one. Money is recorded by the issuer, or confirmed from the client's "I've made a payment" note.
+- **Public links** (`/invoice/<token>`) reach one issued invoice through narrow token-scoped functions. Revoking, rotating, expiring or cancelling stops access at once, including file downloads (enforced by a storage rule, with no service-role key).
+- **Files** are checked by their content, stored unchanged in the private `invoice-files` bucket, and private until the issuer shares them. Limit 4 MB (Vercel's request limit).
+- Issuing needs `SHARE_LINK_SECRET`, which already powers ledger share links.
+
 ## Deploy to production (Vercel)
 
 1. **Supabase (production project).** Create a separate project for production, so test data stays out. Pick the region closest to your users (Mumbai `ap-south-1` for India). Use a paid plan, because free projects pause when idle and have no daily backups. Apply every file in `supabase/migrations` in order; do not run `seed.sql`.
@@ -139,6 +149,8 @@ tests/                 unit, db (PGlite + RLS), e2e (Playwright), fixtures
 - A taxation-ledger "bill" is non-cash: it changes a party balance and the tax summary but not Money In/Out. Cash payments are separate entries. See [docs/ACCOUNTING.md](docs/ACCOUNTING.md).
 
 ## Limitations
+
+- Invoices: no credit notes yet (an issued invoice with payments is corrected by reversing them, then cancelling and re-issuing); no e-invoicing (IRN) or e-way bills; GST on invoices is not written into the Taxation-ledger tax summary (use the taxable invoice report); no malware scanning of uploads; payment-proof screenshots are checked by file type only; reminders open WhatsApp for you to send, nothing is automated; PDFs use Inter only and A4 portrait.
 
 - Attachments: the private bucket, policies and `attachments` table exist, but the upload UI is not built yet.
 - Group shared accounts settle against each person's net position (simplified debts). Pairwise history between two specific people in a large group is not tracked separately.

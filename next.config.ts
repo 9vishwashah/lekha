@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
     "/opengraph-image**": ["./assets/fonts/**"],
     "/s/**": ["./assets/fonts/**"],
     "/invite/**": ["./assets/fonts/**"],
+    "/invoice/**": ["./assets/fonts/**"],
+    "/api/invoice/**": ["./assets/fonts/**"],
+    "/api/invoices/**": ["./assets/fonts/**"],
   },
   turbopack: {
     rules: {
@@ -38,6 +41,7 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: securityHeaders },
       // Share links live in the path; never leak them through the Referer header.
       { source: "/s/:token*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex" }] },
+      { source: "/invoice/:token*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex" }] },
       { source: "/invite/:token*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex" }] },
     ];
   },

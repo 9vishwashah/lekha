@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   BookOpen,
   ChartColumn,
+  FileText,
   Home,
   Plus,
   Receipt,
@@ -23,6 +24,7 @@ const PRIMARY = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/ledgers", label: "Ledgers", icon: BookOpen },
   { href: "/contractors", label: "Client Accounts", icon: UsersRound },
+  { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/advances", label: "Advances", icon: Wallet },
   { href: "/reports", label: "Reports", icon: ChartColumn },
@@ -31,6 +33,7 @@ const PRIMARY = [
 
 const QUICK_ADD = [
   { href: "/ledgers?add=entry", label: "Ledger entry", hint: "Money in or out of a ledger", icon: ArrowLeftRight },
+  { href: "/invoices/new", label: "Invoice", hint: "Bill a client and share it on WhatsApp", icon: FileText },
   { href: "/expenses/new", label: "Expense", hint: "Materials, labour, transport…", icon: Receipt },
   { href: "/advances/new", label: "Advance", hint: "Money given ahead of work", icon: Wallet },
   { href: "/ledgers/new?type=personal", label: "Shared account", hint: "Split costs with friends or family", icon: UsersRound },
@@ -135,7 +138,7 @@ export function BottomNav({ hasWorkspace }: { hasWorkspace: boolean }) {
       <span className="sr-only">{label}</span>
     </IntentLink>
   );
-  const moreActive = ["/expenses", "/advances", "/reports", "/settings", "/shared"].some((h) => isActive(pathname, h));
+  const moreActive = ["/invoices", "/expenses", "/advances", "/reports", "/settings", "/shared"].some((h) => isActive(pathname, h));
   return (
     <>
       <nav

@@ -11,6 +11,7 @@ import { formatDateTime } from "@/lib/domain/dates";
 export const metadata = { title: "Activity" };
 
 const ENTITY: Record<string, string> = {
+  invoices: "Invoice",
   transactions: "Entry",
   transaction_tax_details: "Tax details",
   tax_settlements: "Tax payment",

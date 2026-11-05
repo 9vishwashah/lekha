@@ -2,6 +2,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
+import { onColor } from "@/lib/invoices/doc";
 
 /**
  * Link-preview cards (WhatsApp, iMessage, Slack…): 1200×630 PNGs in the app's own look. Seashell
@@ -67,11 +68,15 @@ export interface CardContent {
   footer?: string | null;
   badge: string;
   color: string;
+  /** A custom solid colour instead of a wallet colour (a business's brand). */
+  hex?: string | null;
+  /** The sender's own logo, as a data URI. */
+  brandLogo?: string | null;
 }
 
 /** `cache`: "private" for anything behind a link token (a revoked link must stop showing at once). */
 export async function renderCard(c: CardContent, { cache = "private" }: { cache?: "private" | "public" } = {}) {
-  const w = OG_WALLET[c.color] ?? OG_WALLET.mustard;
+  const w = c.hex ? { bg: c.hex, fg: onColor(c.hex) } : (OG_WALLET[c.color] ?? OG_WALLET.mustard);
   const titleSize = c.title.length > 26 ? 64 : c.title.length > 16 ? 80 : 96;
   return new ImageResponse(
     (
@@ -86,6 +91,12 @@ export async function renderCard(c: CardContent, { cache = "private" }: { cache?
 
         <div style={{ marginTop: 28, flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", borderRadius: 44, background: w.bg, color: w.fg, padding: "40px 48px" }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
+            {c.brandLogo && (
+              <div style={{ display: "flex", background: "#ffffff", borderRadius: 18, padding: 10, marginBottom: 14, alignSelf: "flex-start" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
+                <img src={c.brandLogo} height={64} style={{ objectFit: "contain" }} />
+              </div>
+            )}
             <div style={{ ...oneLine, fontSize: 26, opacity: 0.7 }}>{c.kicker}</div>
             <div style={{ ...oneLine, fontSize: titleSize, fontWeight: 600, letterSpacing: -3, lineHeight: 1.05, marginTop: 6 }}>{c.title}</div>
             {c.subtitle && <div style={{ ...oneLine, fontSize: 30, opacity: 0.75, marginTop: 6 }}>{c.subtitle}</div>}

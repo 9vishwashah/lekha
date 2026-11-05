@@ -109,3 +109,10 @@ export function relativeTime(ts: string | Date, now = new Date()): string {
 }
 
 export const isISODate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+
+/** "24th October 2026", for formal documents. */
+export function formatDateLong(date: string): string {
+  const { y, m, d } = parts(date.slice(0, 10));
+  const suffix = d % 100 >= 11 && d % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[d % 10] ?? "th";
+  return `${d}${suffix} ${new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, 1)))} ${y}`;
+}

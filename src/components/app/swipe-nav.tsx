@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 
 /** Main sections in the order they sit in the navigation. Swiping moves between neighbours. */
-export const SWIPE_ORDER = ["/dashboard", "/ledgers", "/contractors", "/expenses", "/advances", "/reports"];
+export const SWIPE_ORDER = ["/dashboard", "/ledgers", "/contractors", "/invoices", "/expenses", "/advances", "/reports"];
 
 // Shared between the gesture and the page that mounts after navigation.
 let lastIndex = -1;
