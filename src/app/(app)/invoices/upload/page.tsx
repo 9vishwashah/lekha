@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
-import { getInvoiceSettings, listPaymentProfiles } from "@/lib/server/invoices";
+import { clientLogos, getInvoiceSettings, listPaymentProfiles } from "@/lib/server/invoices";
 import { listContractors, listLedgers } from "@/lib/server/queries";
 import { blankDraft } from "@/lib/invoices/editor";
 import { todayISO } from "@/lib/domain/dates";
@@ -12,11 +12,12 @@ export const metadata = { title: "Upload invoice" };
 
 export default async function UploadInvoice() {
   const ctx = await getWorkspace();
-  const [settings, profiles, clients, ledgers] = await Promise.all([
+  const [settings, profiles, clients, ledgers, logos] = await Promise.all([
     getInvoiceSettings(ctx.db, ctx.workspace.id, ctx.workspace.name),
     listPaymentProfiles(ctx.db, ctx.workspace.id),
     listContractors(ctx.db, ctx.workspace.id),
     listLedgers(ctx.db, ctx.workspace.id),
+    clientLogos(ctx.db, ctx.workspace.id),
   ]);
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -29,7 +30,7 @@ export default async function UploadInvoice() {
       <UploadForm
         initial={blankDraft("custom", settings, profiles, todayISO())}
         profiles={profiles}
-        clients={clients.filter((c) => c.is_active).map((c) => ({ id: c.id, name: c.name, business_name: c.business_name, phone: c.phone, email: c.email, address: c.address }))}
+        clients={clients.filter((c) => c.is_active).map((c) => ({ id: c.id, name: c.name, business_name: c.business_name, phone: c.phone, email: c.email, address: c.address, logo_path: logos.get(c.id) ?? null }))}
         ledgers={ledgers.filter((l) => l.ledger_type !== "personal" && l.status === "active").map((l) => ({ id: l.id, name: l.name, contractor_id: l.contractor_id }))}
       />
     </div>

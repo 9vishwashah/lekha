@@ -55,6 +55,7 @@ const settingsSchema = z.object({
   round_off: z.boolean(),
   allow_payment_claims: z.boolean(),
   show_payment_history: z.boolean(),
+  card_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).or(z.literal("")).optional(),
 });
 
 export async function saveInvoiceSettings(input: z.input<typeof settingsSchema>): Promise<ActionResult> {
@@ -63,6 +64,8 @@ export async function saveInvoiceSettings(input: z.input<typeof settingsSchema>)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: issues(parsed.error) };
   const { error } = await ctx.db.rpc("save_invoice_settings", { p_workspace: ctx.workspace.id, p: parsed.data });
   if (error) return fail(error);
+  const color = await ctx.db.rpc("set_invoice_card_color", { p_workspace: ctx.workspace.id, p_color: parsed.data.card_color ?? "" });
+  if (color.error) return fail(color.error);
   revalidatePath("/invoices", "layout");
   return { ok: true, message: "Invoice settings saved" };
 }
@@ -73,13 +76,13 @@ const IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
 export async function uploadBrandImage(form: FormData): Promise<ActionResult<{ path: string }>> {
   const ctx = await getWorkspace();
   const file = form.get("file");
-  const field = z.enum(["logo_path", "signature_path", "stamp_path", "qr"]).safeParse(form.get("field"));
+  const field = z.enum(["logo_path", "signature_path", "stamp_path", "qr", "client"]).safeParse(form.get("field"));
   if (!field.success || !(file instanceof File) || !IMAGE_TYPES.has(file.type)) return { ok: false, error: "Choose a PNG or JPG image" };
   if (file.size > 900 * 1024) return { ok: false, error: "That image is too large. Try a smaller one." };
   const path = `${ctx.workspace.id}/${newToken().slice(0, 24)}.${file.type === "image/png" ? "png" : "jpg"}`;
   const up = await ctx.db.storage.from("invoice-brand").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
   if (up.error) return { ok: false, error: "The image could not be uploaded. Try again." };
-  if (field.data !== "qr") {
+  if (field.data !== "qr" && field.data !== "client") {
     const { error } = await ctx.db.rpc("set_invoice_brand_image", { p_workspace: ctx.workspace.id, p_field: field.data, p_path: path });
     if (error) return fail(error);
     revalidatePath("/invoices", "layout");
@@ -213,6 +216,7 @@ const draftSchema = z.object({
   allow_payment_claims: z.boolean().optional(),
   show_payment_history: z.boolean().optional(),
   items: z.array(itemSchema).max(200),
+  look: z.object({ document_mode: z.enum(["lekha", "uploaded", "both"]).optional(), client_logo_path: z.string().max(200).optional() }).optional(),
 });
 
 export type DraftInput = z.input<typeof draftSchema>;
@@ -221,8 +225,13 @@ export async function saveDraft(input: DraftInput): Promise<ActionResult<{ id: s
   const ctx = await getWorkspace();
   const parsed = draftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: issues(parsed.error) };
-  const { data, error } = await ctx.db.rpc("save_invoice", { p: { ...parsed.data, workspace_id: ctx.workspace.id } });
+  const { look, ...draft } = parsed.data;
+  const { data, error } = await ctx.db.rpc("save_invoice", { p: { ...draft, workspace_id: ctx.workspace.id } });
   if (error) return fail(error);
+  if (look) {
+    const styled = await ctx.db.rpc("set_invoice_look", { p_id: data, p: look });
+    if (styled.error) return fail(styled.error);
+  }
   refresh(data as string);
   return { ok: true, data: { id: data as string }, message: "Draft saved" };
 }
@@ -291,6 +300,28 @@ export async function amendInvoice(id: string, input: z.input<typeof amendSchema
   if (error) return fail(error);
   refresh(id);
   return { ok: true, message: "Updated. The change is on the invoice timeline." };
+}
+
+const lookSchema = z.object({
+  document_mode: z.enum(["lekha", "uploaded", "both"]).optional(),
+  card_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).or(z.literal("")).optional(),
+  client_logo_path: z.string().max(200).optional(),
+});
+
+/** What the client sees: which document, the card colour, their logo. Never the money. */
+export async function updateClientPage(id: string, look: z.input<typeof lookSchema>, paymentConfig?: Record<string, unknown>): Promise<ActionResult> {
+  await requireUser();
+  const parsed = lookSchema.safeParse(look);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const db = await userDb();
+  const { error } = await db.rpc("set_invoice_look", { p_id: uuid.parse(id), p: parsed.data });
+  if (error) return fail(error);
+  if (paymentConfig) {
+    const amended = await db.rpc("amend_issued_invoice", { p_id: id, p: { payment_config: paymentConfig } });
+    if (amended.error) return fail(amended.error);
+  }
+  refresh(id);
+  return { ok: true, message: "Client page updated" };
 }
 
 export async function cancelInvoice(id: string, reason: string): Promise<ActionResult> {

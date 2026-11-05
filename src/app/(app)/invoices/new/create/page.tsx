@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
-import { getInvoiceSettings, listLibrary, listPaymentProfiles } from "@/lib/server/invoices";
+import { clientLogos, getInvoiceSettings, listLibrary, listPaymentProfiles } from "@/lib/server/invoices";
 import { listContractors, listLedgers } from "@/lib/server/queries";
 import { blankDraft } from "@/lib/invoices/editor";
 import { invoiceTypeLabel } from "@/lib/domain/invoice";
@@ -14,12 +14,13 @@ export const metadata = { title: "New invoice" };
 export default async function CreateInvoice(props: PageProps<"/invoices/new/create">) {
   const ctx = await getWorkspace();
   const params = (await props.searchParams) as Record<string, string>;
-  const [settings, profiles, clients, ledgers, library] = await Promise.all([
+  const [settings, profiles, clients, ledgers, library, logos] = await Promise.all([
     getInvoiceSettings(ctx.db, ctx.workspace.id, ctx.workspace.name),
     listPaymentProfiles(ctx.db, ctx.workspace.id),
     listContractors(ctx.db, ctx.workspace.id),
     listLedgers(ctx.db, ctx.workspace.id),
     listLibrary(ctx.db, ctx.workspace.id),
+    clientLogos(ctx.db, ctx.workspace.id),
   ]);
   const initial = blankDraft(params.type ?? "service", settings, profiles, todayISO());
   return (
@@ -32,7 +33,7 @@ export default async function CreateInvoice(props: PageProps<"/invoices/new/crea
         initial={initial}
         settings={settings}
         profiles={profiles}
-        clients={clients.filter((c) => c.is_active).map((c) => ({ id: c.id, name: c.name, business_name: c.business_name, phone: c.phone, email: c.email, address: c.address }))}
+        clients={clients.filter((c) => c.is_active).map((c) => ({ id: c.id, name: c.name, business_name: c.business_name, phone: c.phone, email: c.email, address: c.address, logo_path: logos.get(c.id) ?? null }))}
         ledgers={ledgers.filter((l) => l.ledger_type !== "personal" && l.status === "active").map((l) => ({ id: l.id, name: l.name, contractor_id: l.contractor_id }))}
         library={library}
       />

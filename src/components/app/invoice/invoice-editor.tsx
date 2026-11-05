@@ -18,6 +18,7 @@ import { type EditorState, blankItem, configFor, previewPayment } from "@/lib/in
 import type { InvoiceSettings, LibraryItem, PaymentConfig, PaymentProfile } from "@/lib/server/invoices";
 import { whatsappLink, whatsappNumber } from "@/lib/whatsapp";
 import { createClientLedger, issueInvoice, markShared, saveDraft, saveLibraryItem } from "@/app/(app)/actions/invoices";
+import { ImagePicker } from "./image-picker";
 import { InvoiceSheet } from "./invoice-sheet";
 import { ScaledSheet } from "./scaled-sheet";
 
@@ -28,6 +29,7 @@ interface ClientOption {
   phone: string | null;
   email: string | null;
   address: string | null;
+  logo_path: string | null;
 }
 
 const STEPS = ["Details", "Client", "Items", "Totals", "Notes", "Payment", "Preview"] as const;
@@ -50,6 +52,7 @@ export function InvoiceEditor({
 }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
+  const [savedLogo, setSavedLogo] = useState(initial.client_logo_path);
   const [step, setStep] = useState<Step>("Details");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [extraLedgers, setExtraLedgers] = useState<typeof ledgers>([]);
@@ -69,13 +72,19 @@ export function InvoiceEditor({
     setErrors({});
     // An empty last line is not an error in a draft: it simply is not saved.
     const items = form.items.filter((i) => i.name.trim() || i.rate.trim());
-    const res = await saveDraft({ ...form, invoice_type: form.invoice_type as "service", items, payment_config: form.payment_config as Record<string, unknown> });
+    // Nothing ticked is a choice: "show no payment details", not "use my default".
+    const c = form.payment_config;
+    const chosen = c.upi || c.bank || c.cash || c.cheque || c.other;
+    const payment_config = { ...c, none: !chosen && profiles.length > 0 };
+    const look = form.client_logo_path !== savedLogo ? { client_logo_path: form.client_logo_path } : undefined;
+    const res = await saveDraft({ ...form, invoice_type: form.invoice_type as "service", items, payment_config: payment_config as Record<string, unknown>, look });
     if (!res.ok) {
       setErrors(res.fieldErrors ?? {});
       toast.error(res.error);
       return null;
     }
     const id = res.data!.id;
+    setSavedLogo(form.client_logo_path);
     set({ id, save_client: false });
     return id;
   };
@@ -336,6 +345,7 @@ function ClientStep({
       client_phone: c.phone ?? "",
       client_email: c.email ?? "",
       client_address: c.address ?? "",
+      client_logo_path: c.logo_path ?? "",
       ledger_id: own?.id ?? form.ledger_id,
     });
   };
@@ -403,6 +413,7 @@ function ClientStep({
           {(p) => <Input {...p} value={form.client_pan} onChange={(e) => set({ client_pan: e.target.value.toUpperCase() })} maxLength={10} autoComplete="off" />}
         </Field>
       </div>
+      <ImagePicker key={form.contractor_id} label="Client's logo (optional)" field="client" path={form.client_logo_path || null} onPath={(p) => set({ client_logo_path: p ?? "" })} />
       {!form.contractor_id && <Checkbox label="Save to Client Accounts" hint="Keeps them for next time, without typing again" checked={form.save_client} onChange={(e) => set({ save_client: e.target.checked })} />}
       <Field label="Ledger" optional hint="Issuing adds the amount owed to this ledger, and payments reduce it. No money is counted until it is received.">
         {(p) => (
@@ -680,8 +691,8 @@ function PaymentStep({ form, set, profiles }: StepProps & { profiles: PaymentPro
       ) : (
         <Field label="Payment profile">
           {(p) => (
-            <Select {...p} value={c.profile_id ?? ""} onChange={(e) => set({ payment_config: configFor(profiles.find((x) => x.id === e.target.value)) })}>
-              <option value="">None</option>
+            <Select {...p} value={c.profile_id ?? ""} onChange={(e) => set({ payment_config: e.target.value ? configFor(profiles.find((x) => x.id === e.target.value)) : { none: true } })}>
+              <option value="">Show no payment details</option>
               {profiles.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.label}
@@ -693,12 +704,12 @@ function PaymentStep({ form, set, profiles }: StepProps & { profiles: PaymentPro
       )}
       <div className="flex flex-col">
         <span className="text-sm font-medium text-ink-2">Show on this invoice</span>
-        {f?.upi_id && <Checkbox label={`UPI: ${f.upi_id}`} checked={Boolean(c.upi)} onChange={(e) => patch({ upi: e.target.checked })} />}
+        {(f?.upi_id || f?.upi_qr_path) && <Checkbox label={f.upi_id ? `UPI: ${f.upi_id}` : "UPI QR"} checked={Boolean(c.upi)} onChange={(e) => patch({ upi: e.target.checked })} />}
         {f?.bank_account && <Checkbox label={`Bank: ${f.bank_name ?? "account"} ending ${f.bank_account.slice(-4)}`} checked={Boolean(c.bank)} onChange={(e) => patch({ bank: e.target.checked })} />}
         <Checkbox label="Cash" checked={Boolean(c.cash)} onChange={(e) => patch({ cash: e.target.checked })} />
         <Checkbox label="Cheque" checked={Boolean(c.cheque)} onChange={(e) => patch({ cheque: e.target.checked })} />
       </div>
-      {c.upi && f?.upi_qr_path && (
+      {c.upi && f?.upi_qr_path && f.upi_id && (
         <Field label="UPI QR">
           {(p) => (
             <Select {...p} value={c.qr_mode ?? "dynamic"} onChange={(e) => patch({ qr_mode: e.target.value as "dynamic" | "fixed" })}>

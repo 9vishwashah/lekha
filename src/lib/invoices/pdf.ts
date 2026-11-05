@@ -520,9 +520,9 @@ export async function invoicePdf(inv: InvoiceDoc): Promise<Uint8Array> {
     blocks.push({
       code: p.upi.link ? vector(p.upi.link) : (x, yy, s) => page.drawImage(fixedQr!, { x, y: yy, width: s, height: s }),
       title: "PAY BY UPI",
-      lines: ["Scan with any UPI app to pay.", `UPI ID: ${p.upi.id}`, ...(p.upi.number ? [`Number: ${p.upi.number}`] : [])],
+      lines: ["Scan with any UPI app to pay.", ...(p.upi.id ? [`UPI ID: ${p.upi.id}`] : []), ...(p.upi.number ? [`Number: ${p.upi.number}`] : [])],
     });
-  } else if (p.upi) {
+  } else if (p.upi?.id) {
     text(`UPI ID: ${p.upi.id}`, M, y - 9, 9, bold);
     y -= 16;
   }
@@ -539,7 +539,7 @@ export async function invoicePdf(inv: InvoiceDoc): Promise<Uint8Array> {
     tracked("PAYMENT MODE", tx, top - 24, 6.5, bold, brand, 1.5);
     text("UPI", tx, top - 40, 13, bold);
     tracked(p.upi.number ? "UPI NUMBER" : "UPI ID", tx, top - 60, 6.5, bold, brand, 1.5);
-    text(p.upi.number ?? p.upi.id, tx, top - 76, 13, bold);
+    text(p.upi.number ?? p.upi.id ?? "", tx, top - 76, 13, bold);
     if (p.upi.payee) text(p.upi.payee, tx, top - 91, 9.5, regular, MUTED);
     text("Scan the QR or pay to the number.", tx, top - 106, 8.5, regular, MUTED);
     if (inv.paymentTerms) tracked(inv.paymentTerms.toUpperCase().slice(0, 34), tx, top - 120, 6.5, bold, brand, 1.5);

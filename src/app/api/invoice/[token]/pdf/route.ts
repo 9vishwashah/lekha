@@ -11,6 +11,8 @@ export async function GET(_: Request, ctx: RouteContext<"/api/invoice/[token]/pd
   const { token } = await ctx.params;
   const invoice = await loadPublicInvoice(token);
   if (!invoice) return new Response("This link is no longer active", { status: 404 });
+  // The issuer chose to send only their own document, so the Lekha format is not offered.
+  if (invoice.document_mode === "uploaded") return new Response("Not available", { status: 404 });
   const pdf = await invoicePdf(publicDoc(invoice, token));
   return new Response(new Uint8Array(pdf), {
     headers: {

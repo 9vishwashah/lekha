@@ -289,7 +289,7 @@ export function InvoiceSheet({ doc }: { doc: InvoiceDoc }) {
                     PAY BY UPI
                   </div>
                   <div className="text-[12px]">Scan with any UPI app to pay.</div>
-                  <div className="break-all text-[12px]">UPI ID: {p.upi.id}</div>
+                  {p.upi.id && <div className="break-all text-[12px]">UPI ID: {p.upi.id}</div>}
                   {p.upi.number && <div className="text-[12px]">Number: {p.upi.number}</div>}
                 </div>
               </div>

@@ -1,17 +1,17 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- uploaded brand images */
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, MoneyInput, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { archivePaymentProfile, clearBrandImage, deleteLibraryItem, saveInvoiceSettings, saveLibraryItem, savePaymentProfile, uploadBrandImage } from "@/app/(app)/actions/invoices";
+import { archivePaymentProfile, deleteLibraryItem, saveInvoiceSettings, saveLibraryItem, savePaymentProfile } from "@/app/(app)/actions/invoices";
+import { ImagePicker } from "@/components/app/invoice/image-picker";
 import { TEMPLATES, formatInvoiceNumber, fyLabel } from "@/lib/domain/invoice";
 import { GST_STATES } from "@/lib/domain/india";
 import { todayISO } from "@/lib/domain/dates";
-import { brandUrl, docFromDraft } from "@/lib/invoices/doc";
+import { docFromDraft, onColor } from "@/lib/invoices/doc";
 import { blankDraft, blankItem } from "@/lib/invoices/editor";
 import type { InvoiceSettings, LibraryItem, PaymentProfile } from "@/lib/server/invoices";
 import { cn } from "@/lib/cn";
@@ -26,88 +26,6 @@ const TABS = [
   { key: "saved", label: "Saved content" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
-
-/** Shrinks a logo in the browser and keeps it PNG or JPG, the two formats a PDF can embed. */
-async function shrink(file: File, max: number): Promise<File> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
-  return new File([blob!], "image.png", { type: "image/png" });
-}
-
-function ImagePicker({ label, field, path, disabled, onPath }: { label: string; field: "logo_path" | "signature_path" | "stamp_path" | "qr"; path: string | null | undefined; disabled: boolean; onPath?: (path: string | null) => void }) {
-  const router = useRouter();
-  const input = useRef<HTMLInputElement>(null);
-  const [pending, start] = useTransition();
-  const [current, setCurrent] = useState(path ?? null);
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-line">
-        {current ? <img src={brandUrl(current) ?? ""} alt="" className="size-full object-contain" /> : <span className="text-[12px] text-ink-3">None</span>}
-      </div>
-      <div className="flex flex-col items-start gap-1">
-        <span className="text-[15px] font-semibold">{label}</span>
-        <div className="flex gap-1">
-          <Button type="button" size="sm" variant="secondary" disabled={disabled || pending} onClick={() => input.current?.click()}>
-            {pending ? "Uploading…" : current ? "Change" : "Upload"}
-          </Button>
-          {current && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={disabled || pending}
-              onClick={() =>
-                start(async () => {
-                  if (field !== "qr") {
-                    const res = await clearBrandImage(field);
-                    if (!res.ok) return void toast.error(res.error);
-                  }
-                  setCurrent(null);
-                  onPath?.(null);
-                  router.refresh();
-                })
-              }
-            >
-              Remove
-            </Button>
-          )}
-        </div>
-      </div>
-      <input
-        ref={input}
-        type="file"
-        accept="image/png,image/jpeg"
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (!file) return;
-          start(async () => {
-            try {
-              const form = new FormData();
-              form.set("field", field);
-              form.set("file", await shrink(file, 900));
-              const res = await uploadBrandImage(form);
-              if (!res.ok) return void toast.error(res.error);
-              setCurrent(res.data!.path);
-              onPath?.(res.data!.path);
-              router.refresh();
-            } catch {
-              toast.error("That image could not be read. Try a PNG or JPG.");
-            }
-          });
-        }}
-      />
-    </div>
-  );
-}
 
 export function InvoiceSettingsScreen({ settings, profiles, library, canEdit, initialTab, fyStart }: { settings: InvoiceSettings; profiles: PaymentProfile[]; library: LibraryItem[]; canEdit: boolean; initialTab?: string; fyStart: number }) {
   const router = useRouter();
@@ -139,6 +57,7 @@ export function InvoiceSettingsScreen({ settings, profiles, library, canEdit, in
         number_start: form.number_start, number_reset: form.number_reset, default_due_days: form.default_due_days,
         default_payment_terms: str("default_payment_terms"), default_terms: str("default_terms"), default_notes: str("default_notes"), default_footer: str("default_footer"),
         default_profile_id: form.default_profile_id ?? "",
+        card_color: form.card_color ?? "",
         show_digital_qr: form.show_digital_qr, round_off: form.round_off, allow_payment_claims: form.allow_payment_claims, show_payment_history: form.show_payment_history,
       });
       if (!res.ok) return void toast.error(res.error);
@@ -211,6 +130,17 @@ export function InvoiceSettingsScreen({ settings, profiles, library, canEdit, in
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Brand colour">{(p) => <input {...p} type="color" value={form.brand_color ?? "#1d1d1b"} onChange={(e) => set({ brand_color: e.target.value })} className="h-12 w-full rounded-[var(--radius-field)] bg-white p-1 ring-1 ring-inset ring-line" />}</Field>
                 <Field label="Accent colour">{(p) => <input {...p} type="color" value={form.accent_color ?? "#eac119"} onChange={(e) => set({ accent_color: e.target.value })} className="h-12 w-full rounded-[var(--radius-field)] bg-white p-1 ring-1 ring-inset ring-line" />}</Field>
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-ink-2">Card colour on your client&apos;s invoice page</span>
+                <Checkbox label="Same as the brand colour" checked={!form.card_color} onChange={(e) => set({ card_color: e.target.checked ? null : (form.brand_color ?? "#1d1d1b") })} />
+                {form.card_color && (
+                  <input type="color" aria-label="Card colour" value={form.card_color} onChange={(e) => set({ card_color: e.target.value })} className="h-12 w-full rounded-[var(--radius-field)] bg-white p-1 ring-1 ring-inset ring-line" />
+                )}
+                <div className="rounded-3xl p-5" style={{ background: form.card_color ?? form.brand_color ?? "#1d1d1b", color: onColor(form.card_color ?? form.brand_color ?? "#1d1d1b") }}>
+                  <div className="text-[13px] opacity-80">Amount due</div>
+                  <div className="display text-3xl font-extrabold">₹25,000</div>
+                </div>
               </div>
               <Field label="Logo position">
                 {(p) => (

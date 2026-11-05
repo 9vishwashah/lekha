@@ -52,7 +52,7 @@ export interface DocItem {
 }
 
 export interface DocPayment {
-  upi: { id: string; payee: string | null; number: string | null; qrImage: string | null; link: string | null } | null;
+  upi: { id: string | null; payee: string | null; number: string | null; qrImage: string | null; link: string | null } | null;
   bank: { holder: string | null; name: string | null; branch: string | null; account: string; ifsc: string | null } | null;
   cash: boolean;
   cheque: boolean;
@@ -127,7 +127,7 @@ export interface SellerSnapshot {
 }
 
 export interface PaymentSnapshot {
-  upi?: { id: string; payee?: string | null; number?: string | null; qr_path?: string | null; dynamic?: boolean } | null;
+  upi?: { id?: string | null; payee?: string | null; number?: string | null; qr_path?: string | null; dynamic?: boolean } | null;
   bank?: { holder?: string | null; name?: string | null; branch?: string | null; account: string; ifsc?: string | null } | null;
   cash?: boolean;
   cheque?: boolean;
@@ -143,7 +143,7 @@ export interface DocRecord {
   due_date: string | null;
   payment_terms: string | null;
   template: string | null;
-  client: { name: string | null; business?: string | null; contact?: string | null; address?: string | null; gstin?: string | null; state?: string | null; country?: string | null };
+  client: { name: string | null; business?: string | null; contact?: string | null; address?: string | null; gstin?: string | null; state?: string | null; country?: string | null; logo_path?: string | null };
   place_of_supply: string | null;
   gst_enabled: boolean;
   supply_type: string;
@@ -210,14 +210,14 @@ function sellerOf(s: SellerSnapshot): DocSeller {
 }
 
 function paymentOf(p: PaymentSnapshot, balance: Paise, number: string | null, business: string): DocPayment {
-  const upi = p.upi?.id
+  const upi = p.upi?.id || p.upi?.qr_path
     ? {
-        id: p.upi.id,
+        id: p.upi.id ?? null,
         payee: p.upi.payee ?? null,
         number: p.upi.number ?? null,
         qrImage: p.upi.dynamic === false ? brandUrl(p.upi.qr_path) : null,
         // Amount-specific QR for what is still owed. A payment link, not proof of payment.
-        link: p.upi.dynamic === false ? null : upiLink({ id: p.upi.id, payee: p.upi.payee ?? business, amount: balance, note: number ? `Invoice ${number}` : "Invoice", reference: number }),
+        link: p.upi.dynamic === false || !p.upi.id ? null : upiLink({ id: p.upi.id, payee: p.upi.payee ?? business, amount: balance, note: number ? `Invoice ${number}` : "Invoice", reference: number }),
       }
     : null;
   const bank = p.bank?.account

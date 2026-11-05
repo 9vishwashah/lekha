@@ -328,3 +328,71 @@ describe("tenancy and roles", () => {
     await expect(as(db, OWNER, (q) => q("select token_hash from public.invoice_share_links"))).rejects.toThrow(/permission denied/);
   });
 });
+
+describe("the client page", () => {
+  const file = (ws: string, id: string, n: string, role = "original", visible = false) =>
+    j({ storage_path: `${ws}/${id}/${n}`, file_name: n, mime_type: "application/pdf", size_bytes: 10, sha256: "0".repeat(64), role, client_visible: visible });
+
+  it("shows a saved QR on its own, and details saved after issuing", async () => {
+    const { db, ws } = await setup();
+    const id = await save(db, draft(ws));
+    await issue(db, id);
+    const view = () => rpc<{ payment: Record<string, { qr_path?: string; dynamic?: boolean }> }>(db, null, "public.get_public_invoice($1)", [TOKEN]);
+    expect((await view()).payment).toEqual({});
+    await rpc(db, OWNER, "public.save_payment_profile($1, $2::jsonb)", [ws, j({ label: "QR only", upi_qr_path: `${ws}/qr.png` })]);
+    expect((await view()).payment.upi).toMatchObject({ qr_path: `${ws}/qr.png`, dynamic: false });
+  });
+
+  it("uses the default profile, and respects choosing to show nothing", async () => {
+    const { db, ws } = await setup();
+    await rpc(db, OWNER, "public.save_payment_profile($1, $2::jsonb)", [ws, j({ label: "Old", upi_id: "old@ybl" })]);
+    const main = await rpc<string>(db, OWNER, "public.save_payment_profile($1, $2::jsonb)", [ws, j({ label: "Main", upi_id: "main@ybl", bank_account: "50200101095482", bank_ifsc: "HDFC0000423" })]);
+    await rpc(db, OWNER, "public.save_invoice_settings($1, $2::jsonb)", [ws, j({ business_name: "VJAS", default_profile_id: main })]);
+    const a = await save(db, draft(ws));
+    await issue(db, a);
+    const shown = await rpc<{ payment: { upi: { id: string }; bank: { account: string } } }>(db, null, "public.get_public_invoice($1)", [TOKEN]);
+    expect(shown.payment.upi.id).toBe("main@ybl");
+    expect(shown.payment.bank.account).toBe("50200101095482");
+    const b = await save(db, draft(ws, { payment_config: { none: true } }));
+    await issue(db, b, "b".repeat(43));
+    expect((await rpc<{ payment: unknown }>(db, null, "public.get_public_invoice($1)", ["b".repeat(43)])).payment).toEqual({});
+  });
+
+  it("sends only your document, and shares it when you choose that", async () => {
+    const { db, ws } = await setup();
+    const id = await save(db, draft(ws, { source: "uploaded", invoice_no: "VJAS/INV/2026/001" }));
+    await rpc(db, OWNER, "public.add_invoice_attachment($1, $2::jsonb)", [id, file(ws, id, "mine.pdf")]);
+    await issue(db, id);
+    const view = () => rpc<{ document_mode: string; files: { file_name: string; role: string }[] }>(db, null, "public.get_public_invoice($1)", [TOKEN]);
+    expect((await view()).files).toEqual([]);
+    await rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ document_mode: "uploaded" })]);
+    expect(await view()).toMatchObject({ document_mode: "uploaded", files: [{ file_name: "mine.pdf", role: "original" }] });
+  });
+
+  it("promotes an attached file, and refuses when there is no document", async () => {
+    const { db, ws } = await setup();
+    const id = await save(db, draft(ws));
+    await issue(db, id);
+    await expect(rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ document_mode: "uploaded" })])).rejects.toThrow(/Attach your invoice document first/);
+    await rpc(db, OWNER, "public.add_invoice_attachment($1, $2::jsonb)", [id, file(ws, id, "scan.pdf", "supporting")]);
+    await rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ document_mode: "both" })]);
+    const v = await rpc<{ files: { role: string }[] }>(db, null, "public.get_public_invoice($1)", [TOKEN]);
+    expect(v.files).toEqual([expect.objectContaining({ role: "original" })]);
+  });
+
+  it("carries the card colour and logos, and remembers the client's logo", async () => {
+    const { db, ws, client } = await setup();
+    await rpc(db, OWNER, "public.set_invoice_card_color($1, $2)", [ws, "#245E55"]);
+    await rpc(db, OWNER, "public.set_invoice_brand_image($1, $2, $3)", [ws, "logo_path", `${ws}/logo.png`]);
+    const id = await save(db, draft(ws, { contractor_id: client }));
+    await issue(db, id);
+    const view = () => rpc<{ card_color: string; seller: { logo_path: string }; client: { logo_path: string | null } }>(db, null, "public.get_public_invoice($1)", [TOKEN]);
+    expect(await view()).toMatchObject({ card_color: "#245e55", seller: { logo_path: `${ws}/logo.png` } });
+    await rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ card_color: "#112233", client_logo_path: `${ws}/client.png` })]);
+    expect(await view()).toMatchObject({ card_color: "#112233", client: { logo_path: `${ws}/client.png` } });
+    const [c] = await as(db, OWNER, (q) => q<{ logo_path: string }>("select logo_path from public.contractors where id = $1", [client]));
+    expect(c.logo_path).toBe(`${ws}/client.png`);
+    await expect(rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ client_logo_path: "other/x.png" })])).rejects.toThrow(/Upload the logo again/);
+    await expect(rpc(db, OUTSIDER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ card_color: "#000000" })])).rejects.toThrow();
+  });
+});

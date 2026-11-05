@@ -4,7 +4,7 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
 import { getInvoice, getInvoiceSettings, invoiceLink, listPaymentProfiles, recordOf } from "@/lib/server/invoices";
 import { isUuid } from "@/lib/server/queries";
-import { docFromRecord } from "@/lib/invoices/doc";
+import { docFromRecord, type PaymentSnapshot } from "@/lib/invoices/doc";
 import { previewPayment } from "@/lib/invoices/editor";
 import { STATUS_LABEL, STATUS_TONE, balanceOf, invoiceStatus, invoiceTypeLabel, reminderStageFor } from "@/lib/domain/invoice";
 import { formatINR, toPaise } from "@/lib/domain/money";
@@ -14,7 +14,7 @@ import { Badge, SectionTitle } from "@/components/ui/bits";
 import { LinkButton } from "@/components/ui/button";
 import { InvoiceSheet } from "@/components/app/invoice/invoice-sheet";
 import { ScaledSheet } from "@/components/app/invoice/scaled-sheet";
-import { DraftActions, FilesPanel, InvoiceActions, LinkPanel, PaymentHistory, SubmissionsPanel } from "./client";
+import { ClientPagePanel, DraftActions, FilesPanel, InvoiceActions, LinkPanel, PaymentHistory, SubmissionsPanel } from "./client";
 
 export const metadata = { title: "Invoice" };
 
@@ -38,6 +38,7 @@ const EVENT: Record<string, string> = {
   attachment_removed: "File removed",
   attachment_shared: "File shared with the client",
   attachment_hidden: "File hidden from the client",
+  look_changed: "Client page updated",
 };
 
 export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) {
@@ -55,7 +56,7 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
     ctx.canWrite && i.status === "issued" ? invoiceLink(ctx.db, id) : Promise.resolve(null),
   ]);
   const seller = i.seller_snapshot ?? settings;
-  const payment = i.payment_snapshot ?? previewPayment(i.payment_config, profiles);
+  const payment = i.status === "draft" ? previewPayment(i.payment_config, profiles) : (((await ctx.db.rpc("invoice_payment_view", { p_id: id })).data as PaymentSnapshot | null) ?? {});
   const doc = docFromRecord(recordOf(i, items, seller, payment), i.show_digital_qr ? url : null);
   const status = invoiceStatus(i, today);
   const balance = balanceOf(i);
@@ -123,12 +124,16 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
         />
       )}
       <div className="flex flex-wrap gap-2">
-        <a href={`/api/invoices/${id}/pdf`} className="inline-flex h-12 items-center rounded-full bg-surface px-5 font-medium ring-1 ring-inset ring-line">
-          Download PDF
-        </a>
-        <a href={`/api/invoices/${id}/pdf?inline=1`} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center rounded-full px-5 font-medium hover:bg-sunken">
-          Open PDF pages
-        </a>
+        {i.document_mode !== "uploaded" && (
+          <>
+            <a href={`/api/invoices/${id}/pdf`} className="inline-flex h-12 items-center rounded-full bg-surface px-5 font-medium ring-1 ring-inset ring-line">
+              Download PDF
+            </a>
+            <a href={`/api/invoices/${id}/pdf?inline=1`} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center rounded-full px-5 font-medium hover:bg-sunken">
+              Open PDF pages
+            </a>
+          </>
+        )}
         {ledger && (
           <Link href={`/ledgers/${ledger.id}`} className="inline-flex h-12 items-center rounded-full px-5 font-medium hover:bg-sunken">
             Ledger: {ledger.name}
@@ -152,19 +157,38 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
         </section>
       )}
 
+      {ctx.canWrite && i.status !== "cancelled" && (
+        <section className="flex flex-col gap-3">
+          <SectionTitle>Client page</SectionTitle>
+          <ClientPagePanel
+            id={id}
+            issued={i.status === "issued"}
+            mode={i.document_mode}
+            hasDocument={attachments.length > 0}
+            color={i.card_color}
+            fallback={settings.card_color ?? seller.brand_color ?? "#1d1d1b"}
+            logo={i.client_logo_path}
+            profiles={profiles}
+            config={i.payment_config}
+          />
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <SectionTitle>Documents</SectionTitle>
         <FilesPanel id={id} files={attachments} canWrite={ctx.canWrite && i.status !== "cancelled"} draft={i.status === "draft"} source={i.source} />
       </section>
 
-      <section className="flex flex-col gap-3">
-        <SectionTitle>{i.source === "uploaded" ? "Companion page" : "Preview"}</SectionTitle>
-        <div className="max-w-3xl overflow-hidden rounded-2xl ring-1 ring-line">
-          <ScaledSheet>
-            <InvoiceSheet doc={doc} />
-          </ScaledSheet>
-        </div>
-      </section>
+      {i.document_mode !== "uploaded" && (
+        <section className="flex flex-col gap-3">
+          <SectionTitle>{i.source === "uploaded" ? "Lekha summary" : "Preview"}</SectionTitle>
+          <div className="max-w-3xl overflow-hidden rounded-2xl ring-1 ring-line">
+            <ScaledSheet>
+              <InvoiceSheet doc={doc} />
+            </ScaledSheet>
+          </div>
+        </section>
+      )}
 
       {reminders.length > 0 && (
         <section className="flex flex-col gap-3">

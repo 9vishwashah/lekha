@@ -12,6 +12,7 @@ export interface EditorState extends DraftForm {
   client_phone: string;
   client_email: string;
   client_pan: string;
+  client_logo_path: string;
   payment_config: PaymentConfig;
   show_digital_qr: boolean;
   allow_payment_claims: boolean;
@@ -29,7 +30,8 @@ const addDays = (date: string, days: number) => {
 };
 
 export function configFor(profile: PaymentProfile | undefined): PaymentConfig {
-  return { profile_id: profile?.id ?? null, upi: Boolean(profile?.upi_id), bank: Boolean(profile?.bank_account), qr_mode: "dynamic" };
+  // A QR image you saved yourself is what you meant to show, so it is the default when there is one.
+  return { profile_id: profile?.id ?? null, upi: Boolean(profile?.upi_id || profile?.upi_qr_path), bank: Boolean(profile?.bank_account), qr_mode: profile?.upi_qr_path ? "fixed" : "dynamic" };
 }
 
 export function blankDraft(type: string, s: InvoiceSettings, profiles: PaymentProfile[], today: string): EditorState {
@@ -54,6 +56,7 @@ export function blankDraft(type: string, s: InvoiceSettings, profiles: PaymentPr
     client_address: "",
     client_gstin: "",
     client_pan: "",
+    client_logo_path: "",
     client_state: "",
     client_country: "India",
     place_of_supply: s.state_code ?? "",
@@ -99,6 +102,7 @@ export function draftFromRow(i: InvoiceRow, items: InvoiceItemRow[]): EditorStat
     client_address: text(i.client_address),
     client_gstin: text(i.client_gstin),
     client_pan: text(i.client_pan),
+    client_logo_path: text(i.client_logo_path),
     client_state: text(i.client_state),
     client_country: i.client_country,
     place_of_supply: text(i.place_of_supply),
@@ -135,9 +139,9 @@ export function draftFromRow(i: InvoiceRow, items: InvoiceItemRow[]): EditorStat
 /** What a draft will show, from the live settings and the chosen payment profile. */
 export function previewPayment(config: PaymentConfig, profiles: PaymentProfile[]): PaymentSnapshot {
   const f = profiles.find((p) => p.id === config.profile_id);
-  const fixed = config.qr_mode === "fixed";
+  const fixed = Boolean(f?.upi_qr_path) && (!f?.upi_id || config.qr_mode === "fixed");
   return {
-    upi: f?.upi_id && config.upi ? { id: f.upi_id, payee: f.upi_payee, number: f.upi_number, qr_path: fixed ? f.upi_qr_path : null, dynamic: !fixed } : null,
+    upi: (f?.upi_id || f?.upi_qr_path) && config.upi ? { id: f.upi_id, payee: f.upi_payee, number: f.upi_number, qr_path: fixed ? f.upi_qr_path : null, dynamic: !fixed } : null,
     bank: f?.bank_account && config.bank ? { holder: f.bank_holder, name: f.bank_name, branch: f.bank_branch, account: f.bank_account, ifsc: f.bank_ifsc } : null,
     cash: config.cash,
     cheque: config.cheque,

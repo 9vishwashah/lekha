@@ -25,6 +25,7 @@ export interface InvoiceSettings extends SellerSnapshot {
   round_off: boolean;
   allow_payment_claims: boolean;
   show_payment_history: boolean;
+  card_color: string | null;
 }
 
 export interface PaymentProfile {
@@ -61,13 +62,20 @@ export interface PaymentConfig {
   cheque?: boolean;
   other?: string | null;
   qr_mode?: "dynamic" | "fixed";
+  /** The issuer chose to show no payment details at all. */
+  none?: boolean;
 }
+
+export type DocumentMode = "lekha" | "uploaded" | "both";
 
 export interface InvoiceRow {
   id: string;
   workspace_id: string;
   invoice_type: string;
   source: "native" | "uploaded";
+  document_mode: DocumentMode;
+  card_color: string | null;
+  client_logo_path: string | null;
   status: "draft" | "issued" | "cancelled";
   invoice_no: string | null;
   title: string | null;
@@ -202,6 +210,7 @@ export const DEFAULT_SETTINGS = (workspaceId: string, name: string): InvoiceSett
   round_off: false,
   allow_payment_claims: true,
   show_payment_history: true,
+  card_color: null,
 });
 
 export async function getInvoiceSettings(db: Db, workspaceId: string, name: string): Promise<InvoiceSettings> {
@@ -239,6 +248,12 @@ export function listPayments(db: Db, workspaceId: string) {
   return fetchAll<PaymentRow & { invoice_id: string }>((from, to) =>
     db.from("invoice_payments").select("*").eq("workspace_id", workspaceId).order("paid_on").order("created_at").range(from, to),
   );
+}
+
+/** Clients' remembered logos. Optional: a missing column must not stop an invoice being written. */
+export async function clientLogos(db: Db, workspaceId: string): Promise<Map<string, string>> {
+  const { data } = await db.from("contractors").select("id, logo_path").eq("workspace_id", workspaceId).not("logo_path", "is", null);
+  return new Map(((data ?? []) as { id: string; logo_path: string }[]).map((c) => [c.id, c.logo_path]));
 }
 
 export async function pendingClaims(db: Db, workspaceId: string) {
@@ -306,6 +321,8 @@ export async function invoiceLink(db: Db, id: string): Promise<string | null> {
 export interface PublicInvoice extends Omit<DocRecord, "totals" | "client"> {
   status: string;
   source: string;
+  document_mode: DocumentMode;
+  card_color: string | null;
   currency: string;
   client: DocRecord["client"];
   totals: DocRecord["totals"] & { balance: string | number; tax_total: string | number };
