@@ -3,6 +3,7 @@ import type { Db } from "@/lib/supabase/server";
 import { anonDb } from "@/lib/supabase/server";
 import { appUrl } from "@/lib/env";
 import { openToken } from "./tokens";
+import { type InvoiceCard, cardVersion } from "@/lib/invoices/card";
 import { isTokenShape } from "./shared";
 import { fetchAll } from "./queries";
 import { docFromRecord, type DocRecord, type PaymentSnapshot, type SellerSnapshot } from "@/lib/invoices/doc";
@@ -312,7 +313,17 @@ export function recordOf(i: InvoiceRow, items: InvoiceItemRow[], seller: SellerS
 export async function invoiceLink(db: Db, id: string): Promise<string | null> {
   const { data } = await db.rpc("invoice_link_secret", { p_invoice: id });
   const token = openToken(data as string | null);
-  return token ? `${appUrl()}/invoice/${token}` : null;
+  return token ? invoiceShareUrl(token) : null;
+}
+
+/**
+ * The one link people are given, for Copy link and WhatsApp alike, so both preview the same. The
+ * ?v= changes when the preview's content does, which is what makes WhatsApp fetch it again. The
+ * page ignores it, so older links keep opening.
+ */
+export async function invoiceShareUrl(token: string) {
+  const card = await loadInvoiceCard(token);
+  return `${appUrl()}/invoice/${token}${card ? `?v=${cardVersion(card)}` : ""}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -349,5 +360,5 @@ export async function loadInvoiceCard(token: string) {
   if (!isTokenShape(token)) return null;
   const { data, error } = await anonDb().rpc("get_invoice_card", { p_token: token });
   if (error || !data) return null;
-  return data as { invoice_no: string; invoice_type: string; business: string | null; logo_path: string | null; brand_color: string | null };
+  return data as InvoiceCard;
 }

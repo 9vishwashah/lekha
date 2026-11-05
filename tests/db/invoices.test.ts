@@ -3,6 +3,7 @@ import { as, createDb, rpc } from "./harness";
 import { computeInvoice } from "@/lib/domain/invoice";
 import { buildStatement } from "@/lib/domain/ledger";
 import { toDecimal } from "@/lib/domain/money";
+import { type InvoiceCard, cardVersion } from "@/lib/invoices/card";
 
 const OWNER = "user_owner";
 const VIEWER = "user_viewer";
@@ -246,7 +247,7 @@ describe("the public link", () => {
     expect(await rpc(db, null, "public.get_public_invoice($1)", ["z".repeat(43)])).toBeNull();
     expect(await rpc(db, null, "public.get_public_invoice($1)", ["' or 1=1 --"])).toBeNull();
     const card = await rpc<Record<string, unknown>>(db, null, "public.get_invoice_card($1)", [TOKEN]);
-    expect(JSON.stringify(card)).not.toContain("25000");
+    expect(card).toMatchObject({ amount: 25000 });
     expect(JSON.stringify(card)).not.toContain("Regal Impex");
   });
 
@@ -394,5 +395,33 @@ describe("the client page", () => {
     expect(c.logo_path).toBe(`${ws}/client.png`);
     await expect(rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ client_logo_path: "other/x.png" })])).rejects.toThrow(/Upload the logo again/);
     await expect(rpc(db, OUTSIDER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ card_color: "#000000" })])).rejects.toThrow();
+  });
+});
+
+describe("the link preview", () => {
+  it("shows the current colour, logo, title and total, never the client", async () => {
+    const { db, ws } = await setup();
+    const id = await save(db, draft(ws, { title: "Old title" }));
+    await issue(db, id);
+    const card = () => rpc<InvoiceCard>(db, null, "public.get_invoice_card($1)", [TOKEN]);
+    const first = await card();
+    expect(first).toMatchObject({ title: "Old title", card_color: "#1d1d1b" });
+
+    await rpc(db, OWNER, "public.set_invoice_card_color($1, $2)", [ws, "#245e55"]);
+    expect((await card()).card_color).toBe("#245e55");
+    await rpc(db, OWNER, "public.set_invoice_look($1, $2::jsonb)", [id, j({ card_color: "#112233" })]);
+    expect((await card()).card_color).toBe("#112233");
+    await rpc(db, OWNER, "public.set_invoice_title($1, $2)", [id, "New title"]);
+    const latest = await card();
+    expect(latest.title).toBe("New title");
+    expect(latest.amount).toBe(25000);
+    expect(JSON.stringify(latest)).not.toContain("Regal Impex");
+
+    // The link's version follows what the preview shows, and nothing else.
+    expect(cardVersion(latest)).not.toBe(cardVersion(first));
+    await pay(db, id, { amount: "100" });
+    expect(cardVersion(await card())).toBe(cardVersion(latest));
+    expect(Number((await inv(db, id)).grand_total)).toBe(25000);
+    await expect(rpc(db, OUTSIDER, "public.set_invoice_title($1, $2)", [id, "Hacked"])).rejects.toThrow();
   });
 });

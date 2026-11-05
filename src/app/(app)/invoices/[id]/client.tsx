@@ -504,8 +504,10 @@ export function ClientPagePanel({
   logo,
   profiles,
   config,
+  title: initialTitle,
 }: {
   id: string;
+  title: string;
   issued: boolean;
   mode: DocumentMode;
   hasDocument: boolean;
@@ -519,17 +521,22 @@ export function ClientPagePanel({
   const [mode, setMode] = useState(initialMode);
   const [card, setCard] = useState(color);
   const [clientLogo, setClientLogo] = useState(logo);
+  const [title, setTitle] = useState(initialTitle);
   const [profile, setProfile] = useState(config.none ? "none" : (config.profile_id ?? ""));
   const shown = card ?? fallback;
 
   const save = () => {
     const chosen = profiles.find((p) => p.id === profile);
     const payment = profile === (config.none ? "none" : (config.profile_id ?? "")) || !issued ? undefined : profile === "none" ? { none: true } : profile ? configFor(chosen) : {};
-    run(() => updateClientPage(id, { document_mode: mode, card_color: card ?? "", client_logo_path: clientLogo ?? "" }, payment as Record<string, unknown> | undefined));
+    run(() => updateClientPage(id, { document_mode: mode, card_color: card ?? "", client_logo_path: clientLogo ?? "", title }, payment as Record<string, unknown> | undefined));
   };
 
   return (
     <div className="flex flex-col gap-4 rounded-[24px] bg-surface p-5 ring-1 ring-inset ring-line/70">
+      <Field label="Invoice title" optional hint="Shown on the client page and in the WhatsApp preview. Amounts stay locked.">
+        {(p) => <Input {...p} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />}
+      </Field>
+
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 text-sm font-medium text-ink-2">What your client receives</legend>
         {MODES.map((m) => (

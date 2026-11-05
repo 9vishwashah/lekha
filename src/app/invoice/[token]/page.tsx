@@ -9,6 +9,9 @@ import { formatDate, todayISO } from "@/lib/domain/dates";
 import { paymentModeLabel } from "@/lib/types";
 import { brandUrl, totalRows, onColor } from "@/lib/invoices/doc";
 import { whatsappNumber } from "@/lib/whatsapp";
+import { cardVersion } from "@/lib/invoices/card";
+import { OG_SIZE } from "@/lib/invoices/doc";
+import { appUrl } from "@/lib/env";
 import { QrCode } from "@/components/app/invoice/invoice-sheet";
 import { Logo } from "@/components/app/logo";
 import { SetupRequired, missingConfig } from "@/components/app/setup-required";
@@ -19,15 +22,16 @@ export const dynamic = "force-dynamic";
 
 const base: Metadata = { title: "Invoice", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
-/** Who sent it and which invoice. Link previews never carry the amount or the client's name. */
+/** Who sent it, which invoice and its total. Link previews never carry the client's name. */
 export async function generateMetadata(props: PageProps<"/invoice/[token]">): Promise<Metadata> {
   const { token } = await props.params;
   const card = await loadInvoiceCard(token);
   if (!card) return base;
   const business = card.business ?? "Lekha";
-  const title = `Invoice ${card.invoice_no} from ${business}`;
-  const description = `View your invoice from ${business}, with payment details.`;
-  return { ...base, title, description, openGraph: { title, description, siteName: business, type: "website" }, twitter: { card: "summary_large_image", title, description } };
+  const title = card.title ? `${card.title} · ${business}` : `Invoice ${card.invoice_no} from ${business}`;
+  const description = `Invoice ${card.invoice_no} from ${business} for ${formatINR(toPaise(card.amount))}. View it with payment details.`;
+  const images = [{ url: `${appUrl()}/invoice/${token}/card?v=${cardVersion(card)}`, width: OG_SIZE.width, height: OG_SIZE.height, type: "image/png", alt: title }];
+  return { ...base, title, description, openGraph: { title, description, siteName: business, type: "website", images }, twitter: { card: "summary_large_image", title, description, images } };
 }
 
 function Unavailable({ title, body }: { title: string; body: string }) {

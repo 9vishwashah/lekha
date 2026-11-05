@@ -5,8 +5,7 @@ import { userDb } from "@/lib/supabase/server";
 import { getWorkspace, requireUser } from "@/lib/server/context";
 import { type ActionResult, fail } from "@/lib/server/errors";
 import { newToken, sealToken } from "@/lib/server/tokens";
-import { invoiceLink } from "@/lib/server/invoices";
-import { appUrl } from "@/lib/env";
+import { invoiceLink, invoiceShareUrl } from "@/lib/server/invoices";
 
 const uuid = z.string().uuid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date");
@@ -278,7 +277,7 @@ export async function issueInvoice(id: string): Promise<ActionResult<{ invoiceNo
   if (error) return fail(error);
   refresh(id);
   revalidatePath("/ledgers", "layout");
-  return { ok: true, data: { invoiceNo: (data as { invoice_no: string }).invoice_no, url: `${appUrl()}/invoice/${token}` }, message: "Invoice issued" };
+  return { ok: true, data: { invoiceNo: (data as { invoice_no: string }).invoice_no, url: await invoiceShareUrl(token) }, message: "Invoice issued" };
 }
 
 const amendSchema = z.object({
@@ -306,16 +305,22 @@ const lookSchema = z.object({
   document_mode: z.enum(["lekha", "uploaded", "both"]).optional(),
   card_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).or(z.literal("")).optional(),
   client_logo_path: z.string().max(200).optional(),
+  title: z.string().trim().max(200).optional(),
 });
 
-/** What the client sees: which document, the card colour, their logo. Never the money. */
+/** What the client sees: which document, the title, card colour, their logo. Never the money. */
 export async function updateClientPage(id: string, look: z.input<typeof lookSchema>, paymentConfig?: Record<string, unknown>): Promise<ActionResult> {
   await requireUser();
   const parsed = lookSchema.safeParse(look);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const db = await userDb();
-  const { error } = await db.rpc("set_invoice_look", { p_id: uuid.parse(id), p: parsed.data });
+  const { title, ...styling } = parsed.data;
+  const { error } = await db.rpc("set_invoice_look", { p_id: uuid.parse(id), p: styling });
   if (error) return fail(error);
+  if (title !== undefined) {
+    const named = await db.rpc("set_invoice_title", { p_id: id, p_title: title });
+    if (named.error) return fail(named.error);
+  }
   if (paymentConfig) {
     const amended = await db.rpc("amend_issued_invoice", { p_id: id, p: { payment_config: paymentConfig } });
     if (amended.error) return fail(amended.error);
@@ -386,7 +391,7 @@ export async function rotateLink(id: string, expiresInDays?: number): Promise<Ac
   const { error } = await db.rpc("rotate_invoice_link", { p_invoice: uuid.parse(id), p_token: token, p_ciphertext: sealed, p_expires: expires });
   if (error) return fail(error);
   refresh(id);
-  return { ok: true, data: { url: `${appUrl()}/invoice/${token}` }, message: "New link created. The old one no longer opens." };
+  return { ok: true, data: { url: await invoiceShareUrl(token) }, message: "New link created. The old one no longer opens." };
 }
 
 export async function revokeLink(id: string): Promise<ActionResult> {

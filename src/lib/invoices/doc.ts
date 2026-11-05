@@ -503,6 +503,9 @@ export function tint(hex: string, amount = 0.08) {
   return `#${c.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 }
 
+/** Link-preview images (WhatsApp, iMessage, Slack). */
+export const OG_SIZE = { width: 1200, height: 630 };
+
 export type TemplateStyle = { header: "band" | "plain"; total: "band" | "right"; table: "solid" | "line"; zebra: boolean; panel: boolean; dense: boolean };
 
 export const TEMPLATE_STYLE: Record<TemplateKey, TemplateStyle> = {

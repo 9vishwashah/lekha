@@ -10,6 +10,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Financial pages are always rendered per request for the signed-in user; nothing private is cached.
   serverExternalPackages: ["exceljs", "pdf-lib", "@pdf-lib/fontkit"],
+  // Link previews must get the same <head> tags whoever asks. Without this, a fetcher Next.js does
+  // not recognise receives them streamed into the body, and the preview can differ or vanish.
+  htmlLimitedBots: /.*/,
   experimental: {
     // Keep visited screens in the client cache so switching back to a tab is instant. Links prefetch
     // only the loading skeleton (the default), so a tap responds at once without the server

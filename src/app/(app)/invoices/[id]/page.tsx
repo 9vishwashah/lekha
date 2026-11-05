@@ -162,6 +162,7 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
           <SectionTitle>Client page</SectionTitle>
           <ClientPagePanel
             id={id}
+            title={i.title ?? ""}
             issued={i.status === "issued"}
             mode={i.document_mode}
             hasDocument={attachments.length > 0}

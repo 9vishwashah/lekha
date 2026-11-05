@@ -1,12 +1,11 @@
-import { OG_SIZE, renderCard } from "@/lib/og";
+import { renderCard } from "@/lib/og";
 import { allow, clientKey } from "@/lib/server/rate-limit";
 import { loadInvoiceCard } from "@/lib/server/invoices";
 import { documentTitle } from "@/lib/domain/invoice";
 import { brandUrl } from "@/lib/invoices/doc";
+import { formatINR, toPaise } from "@/lib/domain/money";
 
-export const alt = "Invoice";
-export const size = OG_SIZE;
-export const contentType = "image/png";
+export const runtime = "nodejs";
 
 /** Business logo as a data URI, or nothing: a missing logo must not break the preview. */
 async function logoData(path: string | null) {
@@ -22,21 +21,25 @@ async function logoData(path: string | null) {
   }
 }
 
-/** WhatsApp preview: who it is from and which invoice. Never the amount or the client. */
-export default async function Image({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
+/**
+ * The picture in a WhatsApp preview: who it is from, which invoice and its total, in the invoice's
+ * card colour. Never the client's name. The ?v= in its address changes with the content.
+ */
+export async function GET(_: Request, ctx: RouteContext<"/invoice/[token]/card">) {
+  const { token } = await ctx.params;
   const card = allow(await clientKey("invoice-card"), 30, 60_000) ? await loadInvoiceCard(token) : null;
   if (!card) {
     return renderCard({ kicker: "Lekha", title: "Link not active", headline: "Ask the sender for a new link", badge: "Invoice", color: "ink" });
   }
+  const business = card.business ?? "Invoice";
   return renderCard({
-    kicker: documentTitle(card.invoice_type),
-    title: card.business ?? "Invoice",
-    headline: `No. ${card.invoice_no}`,
-    chips: ["View", "Download"],
+    kicker: card.title ? `${business} · ${documentTitle(card.invoice_type)}` : documentTitle(card.invoice_type),
+    title: card.title ?? business,
+    headline: `Invoice No. ${card.invoice_no}`,
+    amount: formatINR(toPaise(card.amount)),
     badge: "Secure invoice",
     color: "ink",
-    hex: card.brand_color,
+    hex: card.card_color,
     brandLogo: await logoData(card.logo_path),
   });
 }
