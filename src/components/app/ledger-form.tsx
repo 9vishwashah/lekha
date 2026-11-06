@@ -89,6 +89,11 @@ export function LedgerForm({
             You are added automatically. Pick people from your client accounts, or add someone new. Their balance then shows on your home screen
             and on their client page, and you can invite them to see their own side.
           </p>
+          {people.length === 1 && (
+            <p className="rounded-2xl bg-sunken p-3 text-[13px] text-ink-2">
+              Just one person? You don&apos;t need an account for this. Add the expense on their client page or from New expense.
+            </p>
+          )}
           <ClientPicker clients={contractors} selected={people} onChange={(ids) => setPeople(ids)} name="participant_client_ids" />
           {err("participant_client_ids") && <p className="text-[13px] font-medium text-out">{err("participant_client_ids")}</p>}
         </fieldset>

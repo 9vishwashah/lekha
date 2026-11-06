@@ -62,6 +62,7 @@ export interface Ledger {
   owner_user_id: string;
   last_activity_at: string;
   created_at: string;
+  is_direct: boolean;
 }
 
 export interface TaxDetail {
@@ -137,6 +138,7 @@ export interface SharedExpense {
   status: "posted" | "void";
   void_reason: string | null;
   replaces_id: string | null;
+  split_group_id: string | null;
   created_by: string;
   created_at: string;
   payers: { participant_id: string; amount_paid: string }[];

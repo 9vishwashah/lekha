@@ -23,6 +23,7 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
 
   const visible = entries.filter(
     (e) =>
+      !e.ledger.is_direct &&
       (showArchived ? e.ledger.status === "archived" : e.ledger.status === "active") &&
       (!q || e.ledger.name.toLowerCase().includes(q) || e.ledger.contractor?.name.toLowerCase().includes(q)),
   );

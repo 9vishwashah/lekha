@@ -57,13 +57,36 @@ Workbook check: taxable ₹10,00,000, GST 18% = ₹1,80,000, TDS 1% on taxable =
 `outstanding = amount − cash recovered − amount adjusted against bills`
 
 - An advance is a receivable, not an expense. Given from a ledger, it writes one `advance_given` Money Out entry.
-- A cash recovery writes Money In (`advance_recovery`). An adjustment against a bill writes no entry: in a party ledger the bill and the advance already offset each other, so recording cash would double count.
+- A cash recovery writes Money In (`advance_recovery`). An adjustment against a bill moves no cash. When the advance sits in a party ledger, the bill and the advance already offset each other in the client's total, even across two party ledgers, so it writes no entry. When no party ledger has seen the advance (it had no ledger, or came from a cash book), it writes one non-cash `advance_adjustment` in the bill's ledger, so the amount owed on that bill actually drops. That entry belongs to the advance and is voided with it.
 - The advance row is locked while an allocation is recorded, and the database rejects any amount above the outstanding balance. Retried submissions are idempotent.
 - Status: not recovered, partly recovered, recovered, adjusted against bill, void; overdue when past the expected date with money outstanding.
 
 ## Expenses
 
 The expense row is the canonical record of spending. "Paid from a ledger" also writes exactly one `expense` entry in that ledger, linked by `transaction_id`, in the same database transaction. Editing the expense updates that entry; voiding it voids both. Expense reports read only `expenses`; cash reports read only `transactions`.
+
+## Direct accounts and split expenses
+
+**One client, one running account.** Money with a client needs no ledger. `ledgers.is_direct` marks an ordinary two-person shared account, created on first use and hidden from the Ledgers grid. At most one exists per client (unique index), it cannot be archived or take a third person, and the owner's side is always the workspace owner. All balance, correction, export and sharing code works on it unchanged, so there is no second way of working out what someone owes. Payments on it have no limit: money can arrive ahead of any expense, and the balance flips.
+
+**Nothing becomes a direct account by itself.** A two-person shared account may have a name and purpose of its own, and a client can have several. "Use as main account" on the client page converts one, on request.
+
+**A split expense is one group.** `create_split_expense` saves in one transaction, keyed so a double submit saves once:
+
+| What | Where | Amount |
+| --- | --- | --- |
+| Your own cost | `expenses` | your share |
+| The cash, if a ledger was chosen | `transactions` (cash-book ledgers only) | the full amount, once |
+| With one client | their direct account | full record: who paid, both shares |
+| With several clients | each one's direct account | their share only |
+
+Your share and the cash differ on purpose and are never added together in a total. Several clients means you paid: if someone else paid for a group, the others owe that person, not you, and that debt has no place on your accounts, so it belongs in a named shared account.
+
+**A group stays whole.** Table triggers refuse any change to one part, whichever function attempts it. Voiding the expense, or any one share, voids every share, the expense and the cash together. Voiding from a share needs workspace write access, so a client who can see their own share cannot undo anyone else's.
+
+**Cash goes through cash books only.** A party ledger is already an account with this person, so posting a payment or split there as well would count it against them twice.
+
+**Old balances are ordinary entries.** "Old balance" records an `Opening balance` expense paid by one side and owed by the other. Nets still sum to zero and it can be corrected or voided like anything else, so no per-person opening column is needed.
 
 ## Personal & shared accounts
 

@@ -35,7 +35,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
   ]);
 
   const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
-  const activeLedgers = balances.entries.filter((e) => e.ledger.status === "active");
+  const activeLedgers = balances.entries.filter((e) => e.ledger.status === "active" && !e.ledger.is_direct);
   const openAdvances = advances.filter((a) => a.status === "active" && a.position.outstanding > 0n);
   const outstanding = sum(openAdvances.map((a) => a.position.outstanding));
   const due = openAdvances

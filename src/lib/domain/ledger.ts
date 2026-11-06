@@ -17,6 +17,7 @@ export type TxnKind =
   | "tax_settlement"
   | "advance_given"
   | "advance_recovery"
+  | "advance_adjustment"
   | "expense"
   | "reversal";
 export type Perspective = "cashbook" | "party";
@@ -165,6 +166,7 @@ export const KIND_LABEL: Record<TxnKind, string> = {
   tax_settlement: "Tax payment",
   advance_given: "Advance given",
   advance_recovery: "Advance recovered",
+  advance_adjustment: "Advance adjusted",
   expense: "Expense",
   reversal: "Reversal",
 };

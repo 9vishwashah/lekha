@@ -7,6 +7,8 @@ import { Field, Input, MoneyInput, Select, Textarea } from "@/components/ui/fiel
 import { DateInput } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { PAYMENT_MODES } from "@/lib/types";
+import { SplitWith } from "@/components/app/split-with";
+import type { ClientOption } from "@/components/app/client-picker";
 
 export interface ExpenseValues {
   id: string;
@@ -27,6 +29,9 @@ export interface ExpenseValues {
 /**
  * Expense entry. Choosing "Paid from a ledger" also records one Money Out entry in that ledger,
  * saved together with the expense. Reports count the expense once and the cash once.
+ *
+ * "With whom" splits it: each person's share lands on their client page, your own share is the
+ * expense, and the full amount leaves the ledger.
  */
 export function ExpenseForm({
   categories,
@@ -34,12 +39,16 @@ export function ExpenseForm({
   ledgers,
   today,
   expense,
+  clients,
+  withClient,
 }: {
   categories: { id: string; name: string }[];
   contractors: { id: string; name: string }[];
-  ledgers: { id: string; name: string }[];
+  ledgers: { id: string; name: string; perspective?: string }[];
   today: string;
   expense?: ExpenseValues;
+  clients?: ClientOption[];
+  withClient?: string;
 }) {
   const router = useRouter();
   const [key] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now())));
@@ -48,25 +57,29 @@ export function ExpenseForm({
   const [category, setCategory] = useState(expense?.category_id ?? categories[0]?.id ?? "");
   const [newCat, setNewCat] = useState("");
   const [adding, start] = useTransition();
+  const [amount, setAmount] = useState(expense?.amount ?? "");
+  const [split, setSplit] = useState({ splitting: Boolean(withClient), theyPaid: false });
+  const paidFrom = split.splitting ? ledgers.filter((l) => l.perspective === "cashbook") : ledgers;
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   useEffect(() => {
     if (state?.ok) {
       toast.success(state.message ?? "Saved");
-      router.push("/expenses");
+      router.push(withClient ? `/contractors/${withClient}` : "/expenses");
       router.refresh();
     }
-  }, [state, router]);
+  }, [state, router, withClient]);
 
   return (
     <form action={action} className="flex flex-col gap-5">
       {!expense && <input type="hidden" name="idempotency_key" value={key} />}
       <Field label="Amount" error={err("amount")}>
-        {(p) => <MoneyInput {...p} big name="amount" defaultValue={expense?.amount} placeholder="0" required autoFocus={!expense} />}
+        {(p) => <MoneyInput {...p} big name="amount" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required autoFocus={!expense} />}
       </Field>
       <Field label="What was it for?" error={err("title")}>
         {(p) => <Input {...p} name="title" defaultValue={expense?.title} required maxLength={200} placeholder="Cement – 20 bags" />}
       </Field>
+      {!expense && clients && <SplitWith clients={clients} amount={amount} initial={withClient} onChange={setSplit} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Date" error={err("expense_date")}>
           {(p) => <DateInput {...p} name="expense_date" defaultValue={expense?.expense_date ?? today} required />}
@@ -123,18 +136,20 @@ export function ExpenseForm({
         <Field label="Reference / bill no." optional>
           {(p) => <Input {...p} name="reference_no" defaultValue={expense?.reference_no ?? ""} maxLength={80} />}
         </Field>
-        <Field label="For client" optional>
-          {(p) => (
-            <Select {...p} name="contractor_id" defaultValue={expense?.contractor_id ?? ""}>
-              <option value="">None</option>
-              {contractors.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        {!split.splitting && (
+          <Field label="Tag a client" optional hint="Only labels this expense in reports. To put it on their balance, use With whom.">
+            {(p) => (
+              <Select {...p} name="contractor_id" defaultValue={expense?.contractor_id ?? ""}>
+                <option value="">None</option>
+                {contractors.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
       </div>
       {expense ? (
         expense.ledger_id && (
@@ -143,27 +158,36 @@ export function ExpenseForm({
           </p>
         )
       ) : (
-        <Field label="Paid from a ledger" optional hint="Also records a Money Out entry in that ledger, linked to this expense. Leave empty if the cash isn't tracked in a ledger.">
-          {(p) => (
-            <Select {...p} name="ledger_id" defaultValue="">
-              <option value="">Not paid from a ledger</option>
-              {ledgers.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        !split.theyPaid && (
+          <Field
+            key={split.splitting ? "split" : "plain"}
+            label="Paid from a ledger"
+            optional
+            hint={split.splitting ? "The full amount leaves this cash or bank ledger, once. Only your share counts as your expense." : "Also records a Money Out entry in that ledger, linked to this expense. Leave empty if the cash isn't tracked in a ledger."}
+          >
+            {(p) => (
+              <Select {...p} name="ledger_id" defaultValue="">
+                <option value="">Not paid from a ledger</option>
+                {paidFrom.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )
       )}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="GST rate %" optional error={err("gst_rate")}>
-          {(p) => <Input {...p} name="gst_rate" inputMode="decimal" defaultValue={expense?.gst_rate ? String(Number(expense.gst_rate)) : ""} />}
-        </Field>
-        <Field label="GST included" optional error={err("gst_amount")} hint="GST paid on this expense, if shown on the bill">
-          {(p) => <MoneyInput {...p} name="gst_amount" defaultValue={expense?.gst_amount ?? ""} />}
-        </Field>
-      </div>
+      {!split.splitting && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="GST rate %" optional error={err("gst_rate")}>
+            {(p) => <Input {...p} name="gst_rate" inputMode="decimal" defaultValue={expense?.gst_rate ? String(Number(expense.gst_rate)) : ""} />}
+          </Field>
+          <Field label="GST included" optional error={err("gst_amount")} hint="GST paid on this expense, if shown on the bill">
+            {(p) => <MoneyInput {...p} name="gst_amount" defaultValue={expense?.gst_amount ?? ""} />}
+          </Field>
+        </div>
+      )}
       <Field label="Notes" optional>
         {(p) => <Textarea {...p} name="notes" defaultValue={expense?.notes ?? ""} maxLength={2000} />}
       </Field>

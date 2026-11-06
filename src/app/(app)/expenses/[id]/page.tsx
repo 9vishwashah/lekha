@@ -33,6 +33,13 @@ export default async function ExpensePage(props: PageProps<"/expenses/[id]">) {
       </PageHeader>
       {isVoid || !ctx.canWrite ? (
         <p className="text-ink-2">This expense can no longer be changed.</p>
+      ) : expense.split_group_id ? (
+        <>
+          <p className="rounded-2xl bg-sunken p-4 text-ink-2">
+            This is your share of an expense split with other people. To change it, void it and add it again, so every person&apos;s share stays correct.
+          </p>
+          <VoidExpense id={expense.id} linked split />
+        </>
       ) : (
         <>
           <ExpenseForm

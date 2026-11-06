@@ -48,8 +48,8 @@ export async function loadSharedAccountRows(db: Db) {
     fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string }>((f, t) =>
       db.from("settlements").select("id, ledger_id, status, from_participant_id, to_participant_id, amount").order("id").range(f, t),
     ),
-    fetchAll<{ id: string; name: string; status: string; workspace_id: string }>((f, t) =>
-      db.from("ledgers").select("id, name, status, workspace_id").eq("ledger_type", "personal").order("id").range(f, t),
+    fetchAll<{ id: string; name: string; status: string; workspace_id: string; is_direct: boolean; contractor_id: string | null }>((f, t) =>
+      db.from("ledgers").select("id, name, status, workspace_id, is_direct, contractor_id").eq("ledger_type", "personal").order("id").range(f, t),
     ),
   ]);
   return { participants, expenses, payers, shares, settlements, ledgers };
@@ -89,7 +89,8 @@ export function sharedAccountDebts(rows: SharedAccountRows, userId: string) {
     .filter((l) => l.status === "active")
     .map((l) => {
       const ps = (people.get(l.id) ?? []).sort((a, b) => a.position - b.position);
-      const me = ps.find((p) => p.user_id === userId);
+      // A direct account is between the business and the client, so any teammate sees the business's side.
+      const me = ps.find((p) => p.user_id === userId) ?? (l.is_direct ? ps[0] : undefined);
       const records: SharedExpenseRecord[] = (expenses.get(l.id) ?? []).map((e) => ({
         id: e.id,
         status: e.status,
@@ -103,6 +104,7 @@ export function sharedAccountDebts(rows: SharedAccountRows, userId: string) {
       return {
         ledger: l,
         me,
+        owner: ps[0],
         lines: debts.map((d) => {
           const other = ps.find((p) => p.id === (d.from === me!.id ? d.to : d.from))!;
           return { other, amount: d.from === me!.id ? -d.amount : d.amount }; // + they owe you
@@ -138,7 +140,7 @@ export function peoplePositions(
     for (const line of acct.lines) {
       if (acct.ledger.workspace_id === workspaceId && line.other.contractor_id) {
         add(line.other.contractor_id, { ledgerId: acct.ledger.id, ledgerName: acct.ledger.name, kind: "shared", amount: line.amount });
-      } else if (acct.ledger.workspace_id !== workspaceId) {
+      } else if (acct.ledger.workspace_id !== workspaceId && acct.me!.position !== 0) {
         // Someone else's shared account you were invited to.
         if (line.amount > 0n) sharedOwesYou += line.amount;
         else sharedYouOwe += -line.amount;

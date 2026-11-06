@@ -3,7 +3,7 @@ import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import {
+import { HandCoins,
   ArrowLeftRight,
   BookOpen,
   ChartColumn,
@@ -34,9 +34,10 @@ const PRIMARY = [
 const QUICK_ADD = [
   { href: "/ledgers?add=entry", label: "Ledger entry", hint: "Money in or out of a ledger", icon: ArrowLeftRight },
   { href: "/invoices/new", label: "Invoice", hint: "Bill a client and share it on WhatsApp", icon: FileText },
-  { href: "/expenses/new", label: "Expense", hint: "Materials, labour, transport…", icon: Receipt },
+  { href: "/expenses/new", label: "Expense", hint: "Yours, or split with anyone", icon: Receipt },
+  { href: "/contractors/payment", label: "Payment", hint: "Money from or to someone", icon: HandCoins },
   { href: "/advances/new", label: "Advance", hint: "Money given ahead of work", icon: Wallet },
-  { href: "/ledgers/new?type=personal", label: "Shared account", hint: "Split costs with friends or family", icon: UsersRound },
+  { href: "/ledgers/new?type=personal", label: "Shared account", hint: "For a group: a trip, flatmates", icon: UsersRound },
 ];
 
 const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);

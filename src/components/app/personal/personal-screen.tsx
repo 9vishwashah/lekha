@@ -50,7 +50,7 @@ export function PersonalScreen({
   today,
   openAdd,
 }: {
-  ledger: { id: string; name: string; color: string; status: string; lastActivity: string };
+  ledger: { id: string; name: string; color: string; status: string; lastActivity: string; direct: boolean; clientId: string | null };
   participants: P[];
   debts: { from: string; to: string; amount: string }[];
   expenses: SharedExpense[];
@@ -111,14 +111,17 @@ export function PersonalScreen({
   return (
     <div className="flex flex-col gap-6">
       <div className="no-print flex items-center justify-between">
-        <Link href={access.kind === "member" ? "/ledgers" : "/shared"} className="inline-flex h-11 items-center gap-2 text-sm font-medium text-ink-2 hover:text-ink">
-          <ArrowLeft className="size-4" /> {access.kind === "member" ? "Ledgers" : "Shared with me"}
+        <Link
+          href={access.kind !== "member" ? "/shared" : ledger.direct ? `/contractors/${ledger.clientId}` : "/ledgers"}
+          className="inline-flex h-11 items-center gap-2 text-sm font-medium text-ink-2 hover:text-ink"
+        >
+          <ArrowLeft className="size-4" /> {access.kind !== "member" ? "Shared with me" : ledger.direct ? "Client page" : "Ledgers"}
         </Link>
         <LiveRefresh ledgerId={ledger.id} tables={["shared_expenses", "settlements", "ledgers"]} />
       </div>
 
       <section className={cn("rounded-[32px] p-6 sm:p-8", w.bg, w.fg)}>
-        <div className={cn("text-sm font-medium", w.sub)}>Shared account · {participants.length} people</div>
+        <div className={cn("text-sm font-medium", w.sub)}>{ledger.direct ? "Direct account" : `Shared account · ${participants.length} people`}</div>
         <h1 className="display mt-1 text-[2.4rem] font-extrabold sm:text-6xl">{ledger.name}</h1>
         <div className="mt-10">
           <div className="text-[15px] font-semibold">{headline}</div>
@@ -167,11 +170,11 @@ export function PersonalScreen({
             <Plus className="size-5" /> Add expense
           </Button>
         )}
-        {canAdd && debts.length > 0 && (
+        {canAdd && (debts.length > 0 || ledger.direct) && (
           <Button
             size="lg"
             variant="secondary"
-            onClick={() => setRepaying(youOwe[0] ?? owedToYou[0] ?? debts[0])}
+            onClick={() => setRepaying(youOwe[0] ?? owedToYou[0] ?? debts[0] ?? { from: participants[1]?.id ?? "", to: participants[0]?.id ?? "", amount: "" })}
           >
             <HandCoins className="size-4" /> Record repayment
           </Button>
@@ -332,6 +335,7 @@ export function PersonalScreen({
         initial={repaying}
         today={today}
         viewerId={viewerId}
+        direct={ledger.direct}
       />
       <ItemSheet
         item={selected}
@@ -360,9 +364,11 @@ function RepaymentSheet({
   initial,
   today,
   viewerId,
+  direct,
 }: {
   open: boolean;
   onClose: () => void;
+  direct: boolean;
   ledgerId: string;
   people: P[];
   debts: { from: string; to: string; amount: string }[];
@@ -383,9 +389,10 @@ function RepaymentSheet({
 
   const fromNet = toPaise(people.find((p) => p.id === from)?.net ?? "0");
   const toNet = toPaise(people.find((p) => p.id === to)?.net ?? "0");
-  const max = fromNet < 0n && toNet > 0n ? (-fromNet < toNet ? -fromNet : toNet) : 0n;
+  // The limit is what either person is owed: their debts and credits may cancel out in a group.
+  const max = -fromNet > toNet ? -fromNet : toNet;
   const value = tryPaise(amount);
-  const over = value !== null && value > max;
+  const over = !direct && value !== null && value > max;
   const name = (id: string) => (id === viewerId ? "You" : people.find((p) => p.id === id)?.name);
 
   const submit = () =>
@@ -436,7 +443,7 @@ function RepaymentSheet({
             )}
           </Field>
         </div>
-        <Field label="Amount" hint={max > 0n ? `Up to ${formatINR(max)} is outstanding between them` : "Nothing is outstanding between these two"} error={over ? `That is more than the ${formatINR(max)} outstanding` : undefined}>
+        <Field label="Amount" hint={direct ? "Any amount. Paying more simply flips who owes whom." : max > 0n ? `Up to ${formatINR(max)} is outstanding between them` : "Nothing is outstanding between these two"} error={over ? `That is more than the ${formatINR(max)} outstanding` : undefined}>
           {(p) => <MoneyInput {...p} big value={amount} onChange={(e) => setAmount(e.target.value)} />}
         </Field>
         {debts.length > 1 && (
@@ -574,15 +581,19 @@ function ItemSheet({
         </p>
         {canEdit && status === "posted" && !voiding && (
           <div className="grid grid-cols-2 gap-2">
-            {isExpense && <Button onClick={() => onCorrect(item.e)}>Correct</Button>}
-            <Button variant="secondary" onClick={() => setVoiding(true)} className={isExpense ? "" : "col-span-2"}>
-              Void
+            {isExpense && !item.e.split_group_id && <Button onClick={() => onCorrect(item.e)}>Correct</Button>}
+            <Button variant="secondary" onClick={() => setVoiding(true)} className={isExpense && !item.e.split_group_id ? "" : "col-span-2"}>
+              {isExpense && item.e.split_group_id ? "Void whole split" : "Void"}
             </Button>
           </div>
         )}
         {voiding && (
           <div className="flex flex-col gap-3 rounded-[24px] bg-sunken p-4">
-            <p className="text-[15px]">Voiding keeps it in the history and removes it from everyone&apos;s balance.</p>
+            <p className="text-[15px]">
+              {isExpense && item.e.split_group_id
+                ? "This came from one expense, so voiding it removes every person's share, your own share and the cash entry together. Add it again if it needs changing."
+                : "Voiding keeps it in the history and removes it from everyone's balance."}
+            </p>
             <Field label="Reason">{(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus maxLength={300} />}</Field>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setVoiding(false)}>

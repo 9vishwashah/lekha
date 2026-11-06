@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, MapPin, Phone, Plus } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
-import { isUuid, listContractors } from "@/lib/server/queries";
+import { getPersonalLedger, isUuid, listContractors, listLedgers } from "@/lib/server/queries";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
 import { loadSharedAccountRows, net, peoplePositions } from "@/lib/server/people";
 import { describeBalance, type Perspective } from "@/lib/domain/ledger";
+import { expenseEffect } from "@/lib/domain/split";
 import { sum, toPaise } from "@/lib/domain/money";
 import { formatDateShort, todayISO } from "@/lib/domain/dates";
 import { ADVANCE_STATUS_LABEL } from "@/lib/domain/advances";
@@ -15,6 +16,7 @@ import { LinkButton } from "@/components/ui/button";
 import { WalletCard } from "@/components/app/wallet-card";
 import { ContractorActions } from "./actions";
 import { ConnectCard } from "./connect";
+import { AdoptAccount, ClientMoneyButtons } from "./money";
 import { whatsappNumber } from "@/lib/server/share-card";
 import { loadPeople } from "@/lib/server/profiles";
 
@@ -24,7 +26,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   if (!isUuid(id)) notFound();
   const today = todayISO();
   // One parallel round; this client comes from the same list the merge picker needs.
-  const [balances, advances, all, recent, taxIds, sharedRows] = await Promise.all([
+  const [balances, advances, all, recent, taxIds, sharedRows, allLedgers] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, today),
     listContractors(ctx.db, ctx.workspace.id),
@@ -37,6 +39,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       .limit(10),
     ctx.canWrite ? ctx.db.rpc("contractor_tax_ids", { p_contractor: id }) : Promise.resolve({ data: null }),
     loadSharedAccountRows(ctx.db),
+    listLedgers(ctx.db, ctx.workspace.id),
   ]);
   const c = all.find((x) => x.id === id);
   if (!c) notFound();
@@ -44,8 +47,12 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows).byClient.get(id);
   const overall = net(position);
   const sharedLedgerIds = new Set(sharedRows.participants.filter((p) => p.contractor_id === id).map((p) => p.ledger_id));
-  const sharedAccounts = sharedRows.ledgers.filter((l) => sharedLedgerIds.has(l.id));
-  const ledgers = balances.entries.filter((e) => e.ledger.contractor_id === id);
+  const directLedger = sharedRows.ledgers.find((l) => l.is_direct && l.contractor_id === id && sharedLedgerIds.has(l.id));
+  const sharedAccounts = sharedRows.ledgers.filter((l) => sharedLedgerIds.has(l.id) && l.id !== directLedger?.id);
+  const peopleIn = (ledgerId: string) => sharedRows.participants.filter((p) => p.ledger_id === ledgerId).length;
+  const ledgers = balances.entries.filter((e) => e.ledger.contractor_id === id && e.ledger.ledger_type !== "personal");
+  const direct = directLedger ? await getPersonalLedger(ctx.db, directLedger.id) : null;
+  const clientSide = direct?.participants.find((p) => p.contractor_id === id);
   const mine = advances.filter((a) => a.contractor_id === id);
   const active = mine.filter((a) => a.status === "active");
   const given = sum(active.map((a) => a.position.amount));
@@ -53,9 +60,45 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   const adjusted = sum(active.map((a) => a.position.adjusted));
   const outstanding = sum(active.map((a) => a.position.outstanding));
   const overdue = active.filter((a) => a.position.overdue);
-  const moneyIn = sum(ledgers.map((e) => e.statement?.totals.moneyIn ?? 0n));
-  const moneyOut = sum(ledgers.map((e) => e.statement?.totals.moneyOut ?? 0n));
   const recentRows = (recent.data ?? []) as unknown as { id: string; voucher_no: string; txn_date: string; direction: "in" | "out"; amount: string; description: string | null; status: string; ledger: { id: string; name: string } }[];
+
+  // Everything on one line per event, signed from your side: + you gave, − you got. On the direct
+  // account the two tiles therefore differ by exactly what is owed.
+  const activity = [
+    ...recentRows.map((t) => ({
+      key: t.id,
+      date: t.txn_date,
+      title: t.description || t.voucher_no,
+      from: t.ledger.name,
+      amount: t.direction === "out" ? toPaise(t.amount) : -toPaise(t.amount),
+      void: t.status === "void",
+      href: `/ledgers/${t.ledger.id}`,
+    })),
+    ...(direct?.expenses ?? []).map((e) => ({
+      key: e.id,
+      date: e.txn_date,
+      title: e.description,
+      from: e.split_group_id ? "Split expense" : "Expense",
+      amount: clientSide ? -expenseEffect(e, clientSide.id).effect : 0n,
+      void: e.status === "void",
+      href: `/ledgers/${directLedger!.id}`,
+    })),
+    ...(direct?.settlements ?? []).map((s) => ({
+      key: s.id,
+      date: s.txn_date,
+      title: s.from_participant_id === clientSide?.id ? "Payment received" : "Payment made",
+      from: "Payment",
+      amount: s.from_participant_id === clientSide?.id ? -toPaise(s.amount) : toPaise(s.amount),
+      void: s.status === "void",
+      href: `/ledgers/${directLedger!.id}`,
+    })),
+  ].sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));
+  const directIds = new Set([...(direct?.expenses ?? []), ...(direct?.settlements ?? [])].map((x) => x.id));
+  const counted = activity.filter((a) => !a.void && directIds.has(a.key));
+  const youGot = sum(ledgers.map((e) => e.statement?.totals.moneyIn ?? 0n)) + sum(counted.filter((a) => a.amount < 0n).map((a) => -a.amount));
+  const youGave = sum(ledgers.map((e) => e.statement?.totals.moneyOut ?? 0n)) + sum(counted.filter((a) => a.amount > 0n).map((a) => a.amount));
+  const cashLedgers = allLedgers.filter((l) => l.status === "active" && l.perspective === "cashbook").map((l) => ({ id: l.id, name: l.name }));
+  const first = c.name.split(" ")[0];
 
   return (
     <div className="flex flex-col gap-8">
@@ -83,6 +126,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
+        {ctx.canWrite && c.is_active && <ClientMoneyButtons client={{ id: c.id, name: c.name }} cashLedgers={cashLedgers} today={today} />}
         {ctx.canWrite && (
           <ContractorActions
             contractor={c}
@@ -93,7 +137,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
         )}
         {ctx.canWrite && (
           <LinkButton href={`/ledgers/new?type=personal&people=${c.id}`} variant="secondary">
-            <Plus className="size-4" /> Shared account
+            <Plus className="size-4" /> Group account
           </LinkButton>
         )}
       </div>
@@ -125,12 +169,12 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Totals">
         <div className="rounded-[var(--radius-card)] bg-tea p-5 text-seashell">
-          <div className="text-sm font-medium opacity-75">Money in</div>
-          <Amount value={moneyIn} size="lg" className="mt-4 block text-[1.6rem] sm:text-[2.2rem]" />
+          <div className="text-sm font-medium opacity-75">You got</div>
+          <Amount value={youGot} size="lg" className="mt-4 block text-[1.6rem] sm:text-[2.2rem]" />
         </div>
         <div className="rounded-[var(--radius-card)] bg-ink p-5 text-seashell">
-          <div className="text-sm font-medium opacity-75">Money out</div>
-          <Amount value={moneyOut} size="lg" className="mt-4 block text-[1.6rem] sm:text-[2.2rem]" />
+          <div className="text-sm font-medium opacity-75">You gave</div>
+          <Amount value={youGave} size="lg" className="mt-4 block text-[1.6rem] sm:text-[2.2rem]" />
         </div>
         <div className="rounded-[var(--radius-card)] bg-pink p-5">
           <div className="text-sm font-semibold">Advance outstanding</div>
@@ -145,6 +189,32 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
             <div className="flex justify-between"><dt className="text-ink-2">Adjusted</dt><dd><Money value={adjusted} /></dd></div>
           </dl>
         </div>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <SectionTitle action={directLedger && <LinkButton href={`/ledgers/${directLedger.id}`} size="sm" variant="secondary">Full account</LinkButton>}>
+          Activity with {first}
+        </SectionTitle>
+        {activity.length === 0 ? (
+          <p className="text-ink-2">Nothing yet. {ctx.canWrite && c.is_active ? "Add an expense or record a payment to start." : ""}</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
+            {activity.slice(0, 15).map((a) => (
+              <li key={a.key}>
+                <Link href={a.href} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{a.title}</span>
+                    <span className="block text-[13px] text-ink-3">{a.from} · {formatDateShort(a.date, today)}{a.void ? " · void" : ""}</span>
+                  </span>
+                  <span className="text-right">
+                    <Money value={a.amount < 0n ? -a.amount : a.amount} tone={a.amount < 0n ? "in" : "out"} className={a.void ? "block line-through opacity-50" : "block font-semibold"} />
+                    <span className="text-[12px] text-ink-3">{a.amount < 0n ? "You got" : "You gave"}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="flex flex-col gap-4">
@@ -187,9 +257,12 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
                     name={l.name}
                     type="personal"
                     balance={amount}
-                    meaning={amount === 0n ? "Settled with you" : amount > 0n ? `${c.name.split(" ")[0]} owes you` : `You owe ${c.name.split(" ")[0]}`}
+                    meaning={amount === 0n ? "Settled with you" : amount > 0n ? `${first} owes you` : `You owe ${first}`}
                     archived={l.status === "archived"}
                   />
+                  {ctx.canWrite && !directLedger && l.status === "active" && peopleIn(l.id) === 2 && (
+                    <AdoptAccount ledgerId={l.id} ledgerName={l.name} clientName={first} />
+                  )}
                 </li>
               );
             })}
@@ -197,7 +270,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
         </section>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="flex flex-col gap-8">
         <section className="flex flex-col gap-4">
           <SectionTitle action={ctx.canWrite && <LinkButton href={`/advances/new?contractor=${c.id}`} size="sm" variant="secondary"><Plus className="size-4" /> Advance</LinkButton>}>
             Advance history
@@ -220,26 +293,6 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
                       <Money value={a.position.outstanding} className="block font-semibold" />
                       <span className="text-[12px] text-ink-3">of <Money value={a.position.amount} /></span>
                     </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section className="flex flex-col gap-4">
-          <SectionTitle>Recent entries</SectionTitle>
-          {recentRows.length === 0 ? (
-            <p className="text-ink-2">Nothing recorded yet.</p>
-          ) : (
-            <ul className="divide-y divide-line rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
-              {recentRows.map((t) => (
-                <li key={t.id}>
-                  <Link href={`/ledgers/${t.ledger.id}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{t.description || t.voucher_no}</span>
-                      <span className="block text-[13px] text-ink-3">{t.ledger.name} · {formatDateShort(t.txn_date, today)}</span>
-                    </span>
-                    <Money value={toPaise(t.amount)} tone={t.direction === "in" ? "in" : "out"} className={t.status === "void" ? "line-through opacity-50" : "font-semibold"} />
                   </Link>
                 </li>
               ))}

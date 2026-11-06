@@ -6,20 +6,25 @@ import { todayISO } from "@/lib/domain/dates";
 
 export const metadata = { title: "New expense" };
 
-export default async function NewExpense() {
+export default async function NewExpense(props: PageProps<"/expenses/new">) {
   const ctx = await getWorkspace();
+  const { with: withParam } = (await props.searchParams) as { with?: string };
   const [{ data: categories }, contractors, ledgers] = await Promise.all([
     ctx.db.from("expense_categories").select("id, name").eq("workspace_id", ctx.workspace.id).order("name"),
     listContractors(ctx.db, ctx.workspace.id),
     listLedgers(ctx.db, ctx.workspace.id),
   ]);
+  const active = contractors.filter((c) => c.is_active);
+  const withClient = active.find((c) => c.id === withParam);
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="New expense" kicker="Expenses" />
+      <PageHeader title="New expense" kicker={withClient?.name ?? "Expenses"} />
       <ExpenseForm
         categories={categories ?? []}
-        contractors={contractors.filter((c) => c.is_active).map((c) => ({ id: c.id, name: c.name }))}
-        ledgers={ledgers.filter((l) => l.status === "active" && l.ledger_type !== "personal").map((l) => ({ id: l.id, name: l.name }))}
+        contractors={active.map((c) => ({ id: c.id, name: c.name }))}
+        clients={active.map((c) => ({ id: c.id, name: c.name, kind: c.kind, phone: c.phone }))}
+        withClient={withClient?.id}
+        ledgers={ledgers.filter((l) => l.status === "active" && l.ledger_type !== "personal").map((l) => ({ id: l.id, name: l.name, perspective: l.perspective }))}
         today={todayISO()}
       />
     </div>

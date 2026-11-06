@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { voidExpense } from "@/app/(app)/actions/records";
 
-export function VoidExpense({ id, linked }: { id: string; linked: boolean }) {
+export function VoidExpense({ id, linked, split }: { id: string; linked: boolean; split?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -19,7 +19,11 @@ export function VoidExpense({ id, linked }: { id: string; linked: boolean }) {
     );
   return (
     <div className="mt-8 flex flex-col gap-3 rounded-[24px] bg-sunken p-5">
-      <p>Voiding keeps the expense in history and removes it from totals{linked ? ", together with its ledger entry" : ""}.</p>
+      <p>
+        {split
+          ? "Voiding keeps it in history and removes the whole split: every person's share, your own share and the cash entry."
+          : `Voiding keeps the expense in history and removes it from totals${linked ? ", together with its ledger entry" : ""}.`}
+      </p>
       <Field label="Reason">{(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus maxLength={300} />}</Field>
       <div className="flex gap-2">
         <Button variant="ghost" onClick={() => setOpen(false)}>

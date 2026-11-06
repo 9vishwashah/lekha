@@ -31,13 +31,16 @@ export async function PersonalLedger({
   const ids = data.participants.map((p) => p.id);
   const balances = participantBalances(ids, data.expenses, data.settlements);
   const debts = simplifyDebts(balances, ids);
-  const viewer = data.participants.find((p) => p.user_id === userId) ?? null;
+  // A direct account is between the business and the client: any teammate sees the business's side.
+  const viewer = data.participants.find((p) => p.user_id === userId) ?? (ledger.is_direct ? data.participants[0] : null) ?? null;
+  // The client sees it named after who it is with, not after themselves.
+  const title = ledger.is_direct && access.kind !== "member" ? (data.participants[0]?.display_name ?? ledger.name) : ledger.name;
   // Profile photos of everyone in the account who is on Lekha.
   const accounts = await loadPeople(await userDb(), data.participants.map((p) => p.user_id));
 
   return (
     <PersonalScreen
-      ledger={{ id: ledger.id, name: ledger.name, color: ledger.color, status: ledger.status, lastActivity: ledger.last_activity_at }}
+      ledger={{ id: ledger.id, name: title, color: ledger.color, status: ledger.status, lastActivity: ledger.last_activity_at, direct: ledger.is_direct, clientId: ledger.contractor_id }}
       participants={data.participants.map((p) => {
         const b = balances.get(p.id)!;
         return {

@@ -153,7 +153,7 @@ export function LedgerSettings({
         </Card>
       </section>
 
-      {personal && (
+      {personal && !ledger.is_direct && (
         <section>
           <SectionTitle className="mb-4">People</SectionTitle>
           <Card className="flex flex-col gap-4">
@@ -315,6 +315,7 @@ export function LedgerSettings({
         </Card>
       </section>
 
+      {!ledger.is_direct && (
       <section>
         <SectionTitle className="mb-4">{ledger.status === "archived" ? "Restore" : "Archive"}</SectionTitle>
         <Card className="flex flex-col items-start gap-3">
@@ -335,6 +336,7 @@ export function LedgerSettings({
           </Button>
         </Card>
       </section>
+      )}
     </div>
   );
 }

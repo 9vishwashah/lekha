@@ -126,10 +126,53 @@ const expenseSchema = z.object({
   idempotency_key: z.string().min(8).max(120).optional(),
 });
 
+const splitSchema = z.object({
+  people: z.array(z.object({ contractor_id: uuid, input: z.string().max(20).optional() })).min(1, "Choose who this is with").max(20, "Split with up to 20 people at a time"),
+  include_me: z.boolean(),
+  your_input: z.string().max(20).optional(),
+  method: z.enum(["equal", "exact", "percent", "shares"]),
+  paid_by: uuid.nullable(),
+});
+
+const ME = "me";
+
+/** The browser's preview is only a preview: amounts are worked out again here, in paise. */
+function buildSplit(raw: string, total: string) {
+  const split = splitSchema.parse(JSON.parse(raw));
+  const shares = computeShares(toPaise(total), split.method, [
+    ...(split.include_me ? [{ participantId: ME, input: split.your_input }] : []),
+    ...split.people.map((p) => ({ participantId: p.contractor_id, input: p.input })),
+  ]);
+  const amountFor = (id: string) => toDecimal(shares.find((s) => s.participantId === id)?.amount ?? 0n);
+  return {
+    your_share: amountFor(ME),
+    paid_by_contractor_id: split.paid_by,
+    people: split.people.map((p) => ({ contractor_id: p.contractor_id, amount: amountFor(p.contractor_id) })),
+  };
+}
+
 export async function saveExpense(id: string | null, _: unknown, form: FormData): Promise<ActionResult> {
   const ctx = await getWorkspace();
   const parsed = expenseSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields", fieldErrors: errors(parsed.error) };
+  const split = form.get("split");
+  if (!id && typeof split === "string" && split) {
+    let payload;
+    try {
+      payload = buildSplit(split, parsed.data.amount);
+    } catch (e) {
+      return { ok: false, error: e instanceof MoneyError ? e.message : e instanceof z.ZodError ? e.issues[0].message : "Check the split" };
+    }
+    const rest = { ...parsed.data, contractor_id: undefined, gst_rate: undefined, gst_amount: undefined };
+    const { data, error } = await ctx.db.rpc("create_split_expense", { p: { ...rest, ...payload, workspace_id: ctx.workspace.id } });
+    if (error) return fail(error);
+    revalidatePath("/expenses");
+    revalidatePath("/dashboard");
+    revalidatePath("/contractors", "layout");
+    revalidatePath("/ledgers", "layout");
+    const duplicate = (data as { duplicate?: boolean } | null)?.duplicate;
+    return { ok: true, message: duplicate ? "Already saved" : "Expense split" };
+  }
   const { error } = id
     ? await ctx.db.rpc("update_expense", { p_id: uuid.parse(id), p: { ...parsed.data, ledger_id: undefined } })
     : await ctx.db.rpc("create_expense", { p: { ...parsed.data, workspace_id: ctx.workspace.id } });
@@ -146,6 +189,7 @@ export async function voidExpense(id: string, reason: string): Promise<ActionRes
   if (error) return fail(error);
   revalidatePath("/expenses");
   revalidatePath("/ledgers", "layout");
+  revalidatePath("/contractors", "layout");
   return { ok: true, message: "Expense voided" };
 }
 
@@ -288,6 +332,8 @@ export async function voidSharedExpense(id: string, ledgerId: string, reason: st
   const { error } = await db.rpc("void_shared_expense", { p_id: uuid.parse(id), p_reason: reason });
   if (error) return fail(error);
   revalidatePath(`/ledgers/${ledgerId}`);
+  revalidatePath("/expenses");
+  revalidatePath("/contractors", "layout");
   return { ok: true, message: "Expense removed from balances" };
 }
 
@@ -314,10 +360,50 @@ export async function recordRepayment(input: z.input<typeof settlementSchema>): 
   return { ok: true, message: "Repayment recorded" };
 }
 
+const clientPaymentSchema = z.object({
+  contractor_id: uuid,
+  kind: z.enum(["received", "paid", "opening"]),
+  they_owe: z.boolean(),
+  amount: money,
+  txn_date: isoDate,
+  payment_mode: mode,
+  reference_no: optionalText(80),
+  ledger_id: optionalId,
+  idempotency_key: z.string().min(8).max(120),
+});
+
+export async function recordClientPayment(input: z.input<typeof clientPaymentSchema>): Promise<ActionResult> {
+  const ctx = await getWorkspace();
+  const parsed = clientPaymentSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: errors(parsed.error) };
+  const { kind, they_owe, ...rest } = parsed.data;
+  const { error } =
+    kind === "opening"
+      ? await ctx.db.rpc("record_client_opening", { p: { workspace_id: ctx.workspace.id, contractor_id: rest.contractor_id, amount: rest.amount, txn_date: rest.txn_date, they_owe, idempotency_key: rest.idempotency_key } })
+      : await ctx.db.rpc("record_client_payment", { p: { ...rest, direction: kind, workspace_id: ctx.workspace.id } });
+  if (error) return fail(error);
+  revalidatePath("/contractors", "layout");
+  revalidatePath("/dashboard");
+  if (rest.ledger_id) revalidatePath(`/ledgers/${rest.ledger_id}`);
+  return { ok: true, message: kind === "opening" ? "Old balance added" : "Payment recorded" };
+}
+
+export async function adoptDirectLedger(ledgerId: string): Promise<ActionResult> {
+  await getWorkspace();
+  const db = await userDb();
+  const { error } = await db.rpc("adopt_direct_ledger", { p_ledger: uuid.parse(ledgerId) });
+  if (error) return fail(error);
+  revalidatePath("/contractors", "layout");
+  revalidatePath("/ledgers");
+  return { ok: true, message: "Now the main account" };
+}
+
 export async function voidRepayment(id: string, ledgerId: string, reason: string): Promise<ActionResult> {
   const db = await userDb();
   const { error } = await db.rpc("void_settlement", { p_id: uuid.parse(id), p_reason: reason });
   if (error) return fail(error);
-  revalidatePath(`/ledgers/${ledgerId}`);
+  revalidatePath(`/ledgers/${ledgerId}`, "layout");
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/contractors", "layout");
   return { ok: true, message: "Repayment voided" };
 }
