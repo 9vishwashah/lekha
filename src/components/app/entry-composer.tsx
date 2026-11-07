@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { amendEntry, postEntry, recordTaxPayment } from "@/app/(app)/actions/ledgers";
 import { computeTax, explainTax } from "@/lib/domain/tax";
 import { formatINR, tryPaise } from "@/lib/domain/money";
-import { PAYMENT_MODES, type TaxDetail, type Txn } from "@/lib/types";
+import { NATURES, PAYMENT_MODES, type TaxDetail, type Txn } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { useWallet, WalletSelect, type WalletOption } from "@/components/app/wallet-select";
 
 type Mode = "payment" | "bill" | "tax";
 
@@ -56,6 +57,7 @@ export function EntryComposer({
   canSettleTax,
   editing,
   editingTax,
+  wallets,
 }: {
   open: boolean;
   onClose: () => void;
@@ -66,6 +68,7 @@ export function EntryComposer({
   canSettleTax: boolean;
   editing?: Txn | null;
   editingTax?: TaxDetail | null;
+  wallets: WalletOption[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -80,6 +83,8 @@ export function EntryComposer({
   const [description, setDescription] = useState(editing?.description ?? "");
   const [counterparty, setCounterparty] = useState(editing?.counterparty ?? "");
   const [paymentMode, setPaymentMode] = useState<string>(editing?.payment_mode ?? "");
+  const wallet = useWallet(wallets, paymentMode);
+  const [nature, setNature] = useState("");
   const [reference, setReference] = useState(editing?.reference_no ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [draft, setDraft] = useState(editing?.status === "draft");
@@ -186,7 +191,13 @@ export function EntryComposer({
               // Unticking "attach bill details" on a payment removes its tax row.
               tax: showTax ? taxPayload() : taxation && editingTax ? null : undefined,
             })
-          : await postEntry({ ...payload, ledger_id: ledger.id, idempotency_key: key });
+          : await postEntry({
+              ...payload,
+              ledger_id: ledger.id,
+              idempotency_key: key,
+              wallet_ledger_id: ledger.perspective === "party" && mode === "payment" ? wallet.value : "",
+              nature: ledger.perspective === "cashbook" && mode === "payment" ? (nature as "income") : "",
+            });
       }
       if (!result.ok) {
         setFormError(result.error);
@@ -421,6 +432,29 @@ export function EntryComposer({
           <Checkbox label="Attach bill details (GST / TDS)" checked={withBill} onChange={(e) => setWithBill(e.target.checked)} />
         )}
 
+        {!editing && mode === "payment" && ledger.perspective === "party" && (
+          <WalletSelect
+            wallets={wallets}
+            value={wallet.value}
+            onChange={wallet.setValue}
+            label={direction === "in" ? "Received into" : "Paid from"}
+            hint="Which of your wallets the money went through. Choose a payment mode to fill this in."
+          />
+        )}
+        {!editing && mode === "payment" && ledger.perspective === "cashbook" && (
+          <Field label="What was this?" optional hint="Income and expenses count in Profit & Loss. Left empty, it waits in Books.">
+            {(p) => (
+              <Select {...p} value={nature} onChange={(e) => setNature(e.target.value)}>
+                <option value="">Decide later</option>
+                {NATURES.filter((n) => n.direction === direction || n.direction === "both").map((n) => (
+                  <option key={n.value} value={n.value}>
+                    {n.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
         <button
           type="button"
           onClick={() => setMore(!more)}

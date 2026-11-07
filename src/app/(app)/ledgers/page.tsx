@@ -40,6 +40,8 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
       }),
   );
   const personalMap = new Map(personal);
+  const walletCount = visible.filter((e) => e.ledger.wallet_kind).length;
+  const ordered = [...visible].sort((a, b) => Number(Boolean(b.ledger.wallet_kind)) - Number(Boolean(a.ledger.wallet_kind)));
 
   return (
     <div>
@@ -102,7 +104,7 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
         />
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((e, i) => {
+          {ordered.map((e, i) => {
             const l = e.ledger;
             const p = personalMap.get(l.id);
             const balance = l.ledger_type === "personal" ? (p?.net ?? 0n) : (e.statement?.closing ?? 0n);
@@ -122,7 +124,7 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
                   color={l.color}
                   name={l.name}
                   subtitle={l.contractor?.name}
-                  type={l.ledger_type}
+                  type={l.wallet_kind ?? l.ledger_type}
                   balance={balance}
                   meaning={meaning}
                   archived={l.status === "archived"}

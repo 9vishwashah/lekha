@@ -1,5 +1,5 @@
 import { getWorkspace } from "@/lib/server/context";
-import { listContractors, listLedgers } from "@/lib/server/queries";
+import { listContractors, listLedgers, walletsOf } from "@/lib/server/queries";
 import { PageHeader } from "@/components/ui/bits";
 import { ExpenseForm } from "@/components/app/expense-form";
 import { todayISO } from "@/lib/domain/dates";
@@ -24,7 +24,7 @@ export default async function NewExpense(props: PageProps<"/expenses/new">) {
         contractors={active.map((c) => ({ id: c.id, name: c.name }))}
         clients={active.map((c) => ({ id: c.id, name: c.name, kind: c.kind, phone: c.phone }))}
         withClient={withClient?.id}
-        ledgers={ledgers.filter((l) => l.status === "active" && l.ledger_type !== "personal").map((l) => ({ id: l.id, name: l.name, perspective: l.perspective }))}
+        ledgers={walletsOf(ledgers)}
         today={todayISO()}
       />
     </div>

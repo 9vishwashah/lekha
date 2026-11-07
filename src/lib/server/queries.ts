@@ -31,17 +31,17 @@ export async function fetchAll<T>(
 }
 
 export const LEDGER_COLUMNS =
-  "id, workspace_id, contractor_id, name, ledger_type, perspective, reference_no, opening_balance, opening_balance_date, description, notes, status, gst_mode, color, owner_user_id, last_activity_at, created_at, is_direct";
+  "id, workspace_id, contractor_id, name, ledger_type, perspective, reference_no, opening_balance, opening_balance_date, description, notes, status, gst_mode, color, owner_user_id, last_activity_at, created_at, is_direct, wallet_kind";
 
 export const TXN_COLUMNS =
-  "id, ledger_id, seq, voucher_no, txn_date, direction, amount, kind, is_cash, affects_party, description, counterparty, payment_mode, reference_no, notes, status, reversal_of, void_reason, created_by, created_via, updated_by, created_at, updated_at, import_batch_id";
+  "id, ledger_id, seq, voucher_no, txn_date, direction, amount, kind, is_cash, affects_party, description, counterparty, payment_mode, reference_no, notes, status, reversal_of, void_reason, created_by, created_via, updated_by, created_at, updated_at, import_batch_id, wallet_ledger_id, nature";
 
-const BALANCE_COLUMNS = "ledger_id, seq, txn_date, direction, amount, kind, is_cash, affects_party, status";
+const BALANCE_COLUMNS = "ledger_id, seq, txn_date, direction, amount, kind, is_cash, affects_party, status, wallet_ledger_id, nature";
 
 export const CONTRACTOR_COLUMNS =
   "id, workspace_id, name, business_name, phone, email, address, notes, is_active, merged_into, kind, linked_user_id, created_at";
 
-export type BalanceRow = Pick<Txn, "ledger_id" | "seq" | "txn_date" | "direction" | "amount" | "kind" | "is_cash" | "affects_party" | "status">;
+export type BalanceRow = Pick<Txn, "ledger_id" | "seq" | "txn_date" | "direction" | "amount" | "kind" | "is_cash" | "affects_party" | "status" | "wallet_ledger_id" | "nature">;
 
 export async function listLedgers(db: Db, workspaceId: string) {
   const { data, error } = await db
@@ -51,6 +51,13 @@ export async function listLedgers(db: Db, workspaceId: string) {
     .order("last_activity_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as (Ledger & { contractor: { id: string; name: string } | null })[];
+}
+
+/** The wallets someone can choose from: your own money, not a client's cash book. */
+export function walletsOf(ledgers: Pick<Ledger, "id" | "name" | "status" | "perspective" | "contractor_id" | "wallet_kind">[]) {
+  return ledgers
+    .filter((l) => l.status === "active" && l.perspective === "cashbook" && !l.contractor_id)
+    .map((l) => ({ id: l.id, name: l.name, kind: l.wallet_kind }));
 }
 
 /** Minimal rows for computing every ledger balance in a workspace. */
@@ -77,7 +84,8 @@ export async function getLedger(db: Db, id: string) {
 export async function getLedgerTxns(db: Db, ledgerId: string) {
   if (!isUuid(ledgerId)) return [];
   return fetchAll<Txn>((from, to) =>
-    db.from("transactions").select(TXN_COLUMNS).eq("ledger_id", ledgerId).order("txn_date").order("seq").range(from, to),
+    // A wallet also shows the money that went through it from a party ledger.
+    db.from("transactions").select(TXN_COLUMNS).or(`ledger_id.eq.${ledgerId},wallet_ledger_id.eq.${ledgerId}`).order("txn_date").order("seq").order("id").range(from, to),
   );
 }
 

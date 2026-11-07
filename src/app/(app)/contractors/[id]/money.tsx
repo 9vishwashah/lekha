@@ -7,6 +7,7 @@ import { adoptDirectLedger } from "@/app/(app)/actions/records";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { ClientPaymentForm } from "@/components/app/client-payment";
+import type { WalletOption } from "@/components/app/wallet-select";
 
 /** The two things you most often do on someone's page, with no ledger to pick first. */
 export function ClientMoneyButtons({
@@ -15,7 +16,7 @@ export function ClientMoneyButtons({
   today,
 }: {
   client: { id: string; name: string };
-  cashLedgers: { id: string; name: string }[];
+  cashLedgers: WalletOption[];
   today: string;
 }) {
   const [open, setOpen] = useState(false);

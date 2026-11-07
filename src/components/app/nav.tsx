@@ -3,7 +3,7 @@ import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { HandCoins,
+import { BookOpenCheck, HandCoins,
   ArrowLeftRight,
   BookOpen,
   ChartColumn,
@@ -27,6 +27,7 @@ const PRIMARY = [
   { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/advances", label: "Advances", icon: Wallet },
+  { href: "/books", label: "Books", icon: BookOpenCheck },
   { href: "/reports", label: "Reports", icon: ChartColumn },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

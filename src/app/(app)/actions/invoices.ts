@@ -347,6 +347,7 @@ const paymentSchema = z.object({
   notes: z.string().trim().max(1000),
   allow_excess: z.boolean().optional(),
   idempotency_key: z.string().min(8).max(120),
+  wallet_ledger_id: uuid.or(z.literal("")),
 });
 
 export async function recordPayment(id: string, input: z.input<typeof paymentSchema>): Promise<ActionResult> {
@@ -358,6 +359,9 @@ export async function recordPayment(id: string, input: z.input<typeof paymentSch
   if (error) return fail(error);
   refresh(id);
   revalidatePath("/ledgers", "layout");
+  revalidatePath("/books");
+  revalidatePath("/dashboard");
+  revalidatePath("/contractors", "layout");
   return { ok: true, message: (data as { duplicate: boolean }).duplicate ? "Already recorded" : "Payment recorded" };
 }
 

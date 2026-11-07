@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, MapPin, Phone, Plus } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
-import { getPersonalLedger, isUuid, listContractors, listLedgers } from "@/lib/server/queries";
+import { getPersonalLedger, isUuid, listContractors, listLedgers, walletsOf } from "@/lib/server/queries";
+import { listInvoices } from "@/lib/server/invoices";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
 import { loadSharedAccountRows, net, peoplePositions } from "@/lib/server/people";
 import { describeBalance, type Perspective } from "@/lib/domain/ledger";
@@ -26,7 +27,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   if (!isUuid(id)) notFound();
   const today = todayISO();
   // One parallel round; this client comes from the same list the merge picker needs.
-  const [balances, advances, all, recent, taxIds, sharedRows, allLedgers] = await Promise.all([
+  const [balances, advances, all, recent, taxIds, sharedRows, allLedgers, invoices] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, today),
     listContractors(ctx.db, ctx.workspace.id),
@@ -40,13 +41,15 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
     ctx.canWrite ? ctx.db.rpc("contractor_tax_ids", { p_contractor: id }) : Promise.resolve({ data: null }),
     loadSharedAccountRows(ctx.db),
     listLedgers(ctx.db, ctx.workspace.id),
+    listInvoices(ctx.db, ctx.workspace.id),
   ]);
   const c = all.find((x) => x.id === id);
   if (!c) notFound();
   const account = c.linked_user_id ? ((await loadPeople(ctx.db, [c.linked_user_id])).get(c.linked_user_id) ?? null) : null;
-  const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows).byClient.get(id);
+  const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, all).byClient.get(id);
   const overall = net(position);
-  const sharedLedgerIds = new Set(sharedRows.participants.filter((p) => p.contractor_id === id).map((p) => p.ledger_id));
+  // Accounts they run that you are in show here too, on the card linking made for them.
+  const sharedLedgerIds = new Set(sharedRows.participants.filter((p) => p.contractor_id === id || (c.linked_user_id && p.user_id === c.linked_user_id)).map((p) => p.ledger_id));
   const directLedger = sharedRows.ledgers.find((l) => l.is_direct && l.contractor_id === id && sharedLedgerIds.has(l.id));
   const sharedAccounts = sharedRows.ledgers.filter((l) => sharedLedgerIds.has(l.id) && l.id !== directLedger?.id);
   const peopleIn = (ledgerId: string) => sharedRows.participants.filter((p) => p.ledger_id === ledgerId).length;
@@ -65,6 +68,17 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   // Everything on one line per event, signed from your side: + you gave, − you got. On the direct
   // account the two tiles therefore differ by exactly what is owed.
   const activity = [
+    ...invoices
+      .filter((i) => i.contractor_id === id && i.status === "issued" && i.invoice_type !== "proforma" && !i.transaction_id)
+      .map((i) => ({
+        key: i.id,
+        date: i.invoice_date,
+        title: `Invoice ${i.invoice_no ?? ""}`.trim(),
+        from: toPaise(i.amount_received) >= toPaise(i.grand_total) ? "Invoice · paid" : "Invoice",
+        amount: toPaise(i.grand_total),
+        void: false,
+        href: `/invoices/${i.id}`,
+      })),
     ...recentRows.map((t) => ({
       key: t.id,
       date: t.txn_date,
@@ -97,7 +111,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   const counted = activity.filter((a) => !a.void && directIds.has(a.key));
   const youGot = sum(ledgers.map((e) => e.statement?.totals.moneyIn ?? 0n)) + sum(counted.filter((a) => a.amount < 0n).map((a) => -a.amount));
   const youGave = sum(ledgers.map((e) => e.statement?.totals.moneyOut ?? 0n)) + sum(counted.filter((a) => a.amount > 0n).map((a) => a.amount));
-  const cashLedgers = allLedgers.filter((l) => l.status === "active" && l.perspective === "cashbook").map((l) => ({ id: l.id, name: l.name }));
+  const cashLedgers = walletsOf(allLedgers);
   const first = c.name.split(" ")[0];
 
   return (

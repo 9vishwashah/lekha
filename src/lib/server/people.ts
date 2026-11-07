@@ -1,6 +1,7 @@
 import "server-only";
 import type { Db } from "@/lib/supabase/server";
 import type { Paise } from "@/lib/domain/money";
+import { toPaise } from "@/lib/domain/money";
 import { participantBalances, simplifyDebts, type SharedExpenseRecord } from "@/lib/domain/split";
 import { fetchAll } from "./queries";
 import type { ledgerBalances } from "./workspace-data";
@@ -17,7 +18,7 @@ import type { ledgerBalances } from "./workspace-data";
 export interface PersonPosition {
   owesYou: Paise;
   youOwe: Paise;
-  sources: { ledgerId: string; ledgerName: string; kind: "party" | "shared"; amount: Paise }[]; // + they owe you, − you owe
+  sources: { ledgerId: string; ledgerName: string; kind: "party" | "shared" | "invoice"; amount: Paise }[]; // + they owe you, − you owe
 }
 
 interface ParticipantRow {
@@ -36,8 +37,8 @@ export async function loadSharedAccountRows(db: Db) {
     fetchAll<ParticipantRow>((f, t) =>
       db.from("ledger_participants").select("id, ledger_id, workspace_id, contractor_id, user_id, position, display_name").order("id").range(f, t),
     ),
-    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; total_amount: string }>((f, t) =>
-      db.from("shared_expenses").select("id, ledger_id, status, total_amount").order("id").range(f, t),
+    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; total_amount: string; txn_date: string; description: string; category: string | null; split_group_id: string | null }>((f, t) =>
+      db.from("shared_expenses").select("id, ledger_id, status, total_amount, txn_date, description, category, split_group_id").order("id").range(f, t),
     ),
     fetchAll<{ shared_expense_id: string; participant_id: string; amount_paid: string }>((f, t) =>
       db.from("shared_expense_payers").select("shared_expense_id, participant_id, amount_paid").order("shared_expense_id").range(f, t),
@@ -45,8 +46,8 @@ export async function loadSharedAccountRows(db: Db) {
     fetchAll<{ shared_expense_id: string; participant_id: string; share_amount: string }>((f, t) =>
       db.from("shared_expense_shares").select("shared_expense_id, participant_id, share_amount").order("shared_expense_id").range(f, t),
     ),
-    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string }>((f, t) =>
-      db.from("settlements").select("id, ledger_id, status, from_participant_id, to_participant_id, amount").order("id").range(f, t),
+    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string; transaction_id: string | null }>((f, t) =>
+      db.from("settlements").select("id, ledger_id, status, from_participant_id, to_participant_id, amount, transaction_id").order("id").range(f, t),
     ),
     fetchAll<{ id: string; name: string; status: string; workspace_id: string; is_direct: boolean; contractor_id: string | null }>((f, t) =>
       db.from("ledgers").select("id, name, status, workspace_id, is_direct, contractor_id").eq("ledger_type", "personal").order("id").range(f, t),
@@ -114,11 +115,33 @@ export function sharedAccountDebts(rows: SharedAccountRows, userId: string) {
     .filter((x) => x.me);
 }
 
+interface InvoiceDebt {
+  id: string;
+  invoice_no: string | null;
+  contractor_id: string | null;
+  ledger_id: string | null;
+  transaction_id: string | null;
+  status: string;
+  invoice_type: string;
+  grand_total: string;
+  amount_received: string;
+}
+
+/**
+ * One figure per person. Someone who owes you on a ledger and is owed on a shared account is one
+ * balance, the same one their card shows, not a debtor and a creditor at once.
+ *
+ * An invoice that isn't on a party ledger counts here on its own; one that is, counts through that
+ * ledger. Shared accounts someone else runs land on the card you hold for that person when there
+ * is one, because linking makes one for you.
+ */
 export function peoplePositions(
   workspaceId: string,
   userId: string,
   balances: Awaited<ReturnType<typeof ledgerBalances>>,
   rows: SharedAccountRows,
+  invoices: InvoiceDebt[] = [],
+  clients: { id: string; linked_user_id: string | null }[] = [],
 ) {
   const byClient = new Map<string, PersonPosition>();
   const add = (clientId: string, src: PersonPosition["sources"][number]) => {
@@ -134,6 +157,19 @@ export function peoplePositions(
     if (e.statement.closing !== 0n) add(e.ledger.contractor_id, { ledgerId: e.ledger.id, ledgerName: e.ledger.name, kind: "party", amount: e.statement.closing });
   }
 
+  const partyLedgers = new Set(balances.entries.filter((e) => e.ledger.perspective === "party").map((e) => e.ledger.id));
+  let looseInvoices = 0n; // invoices with no client record to put them on
+  for (const i of invoices) {
+    if (i.status !== "issued" || i.invoice_type === "proforma") continue;
+    if (i.transaction_id && i.ledger_id && partyLedgers.has(i.ledger_id)) continue;
+    const due = toPaise(i.grand_total) - toPaise(i.amount_received);
+    if (due === 0n) continue;
+    if (i.contractor_id) add(i.contractor_id, { ledgerId: i.id, ledgerName: `Invoice ${i.invoice_no ?? ""}`.trim(), kind: "invoice", amount: due });
+    else looseInvoices += due;
+  }
+
+  const cardFor = new Map(clients.filter((c) => c.linked_user_id).map((c) => [c.linked_user_id!, c.id]));
+
   let sharedOwesYou = 0n;
   let sharedYouOwe = 0n;
   for (const acct of sharedAccountDebts(rows, userId)) {
@@ -142,25 +178,28 @@ export function peoplePositions(
         add(line.other.contractor_id, { ledgerId: acct.ledger.id, ledgerName: acct.ledger.name, kind: "shared", amount: line.amount });
       } else if (acct.ledger.workspace_id !== workspaceId && acct.me!.position !== 0) {
         // Someone else's shared account you were invited to.
-        if (line.amount > 0n) sharedOwesYou += line.amount;
+        const card = line.other.user_id ? cardFor.get(line.other.user_id) : undefined;
+        if (card) add(card, { ledgerId: acct.ledger.id, ledgerName: acct.ledger.name, kind: "shared", amount: line.amount });
+        else if (line.amount > 0n) sharedOwesYou += line.amount;
         else sharedYouOwe += -line.amount;
       }
     }
   }
 
-  let owesYou = sharedOwesYou;
-  let youOwe = sharedYouOwe;
-  for (const p of byClient.values()) {
-    owesYou += p.owesYou;
-    youOwe += p.youOwe;
-  }
+  const nets = [...byClient.values()].map((p) => p.owesYou - p.youOwe);
+  const owing = nets.filter((n) => n > 0n);
+  const owed = nets.filter((n) => n < 0n);
+  const owesYou = sharedOwesYou + (looseInvoices > 0n ? looseInvoices : 0n) + owing.reduce((a, n) => a + n, 0n);
+  const youOwe = sharedYouOwe + (looseInvoices < 0n ? -looseInvoices : 0n) - owed.reduce((a, n) => a + n, 0n);
   const fromShared = [...byClient.values()].flatMap((p) => p.sources).filter((s) => s.kind === "shared");
   return {
     byClient,
     owesYou,
     youOwe,
-    peopleOwingYou: [...byClient.values()].filter((p) => p.owesYou > 0n).length + (sharedOwesYou > 0n ? 1 : 0),
-    peopleYouOwe: [...byClient.values()].filter((p) => p.youOwe > 0n).length + (sharedYouOwe > 0n ? 1 : 0),
+    peopleOwingYou: owing.length + (sharedOwesYou > 0n ? 1 : 0),
+    peopleYouOwe: owed.length + (sharedYouOwe > 0n ? 1 : 0),
+    invitedOwesYou: sharedOwesYou,
+    invitedYouOwe: sharedYouOwe,
     sharedIncluded: fromShared.length > 0 || sharedOwesYou + sharedYouOwe > 0n,
   };
 }

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser, getMemberships } from "@/lib/server/context";
 import { userDb } from "@/lib/supabase/server";
-import { getLedger, getLedgerTax, getLedgerTxns, getPersonalLedger, peopleNames, reversedIds } from "@/lib/server/queries";
+import { getLedger, getLedgerTax, getLedgerTxns, getPersonalLedger, listLedgers, peopleNames, reversedIds, walletsOf } from "@/lib/server/queries";
 import { ledgerAccess } from "@/lib/server/access";
 import { buildStatement, describeBalance, type Perspective } from "@/lib/domain/ledger";
 import { toDecimal, toPaise } from "@/lib/domain/money";
@@ -37,6 +37,7 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
   }
 
   const membership = memberships.find((m) => m.workspace.id === ledger.workspace_id);
+  const wallets = membership ? walletsOf(await listLedgers(db, ledger.workspace_id)) : [];
 
   const range = {
     from: params.from && isISODate(params.from) ? params.from : undefined,
@@ -66,6 +67,7 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
 
   return (
     <LedgerScreen
+      wallets={wallets}
       ledger={{
         id: ledger.id,
         name: ledger.name,

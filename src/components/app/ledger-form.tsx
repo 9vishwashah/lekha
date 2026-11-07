@@ -10,11 +10,12 @@ import { Segmented } from "@/components/ui/segmented";
 import { WALLET, WALLET_COLORS } from "@/components/ui/bits";
 import { cn } from "@/lib/cn";
 
-type LedgerType = "basic" | "taxation" | "personal";
+type LedgerType = "wallet" | "basic" | "taxation" | "personal";
 
 const TYPES: { value: LedgerType; title: string; body: string; color: string }[] = [
-  { value: "basic", title: "Basic", body: "Money in and out with a running balance. Like your SR / DATE / PAYEE / CREDIT / DEBIT sheet.", color: "bg-mustard" },
-  { value: "taxation", title: "Taxation", body: "Bills with GST and TDS, amounts after TDS, and tax payments to Government.", color: "bg-lavender" },
+  { value: "wallet", title: "Cash or bank", body: "Where your own money sits: cash in hand, a bank account, UPI.", color: "bg-tea text-seashell" },
+  { value: "basic", title: "Client ledger", body: "A running account with one person or business: what they owe you, what you owe them.", color: "bg-mustard" },
+  { value: "taxation", title: "Taxation", body: "An account with bills, GST and TDS, amounts after TDS, and tax payments to Government.", color: "bg-lavender" },
   { value: "personal", title: "Shared account", body: "For friends, family, trips and flatmates. Split costs and settle up.", color: "bg-pink" },
 ];
 
@@ -35,21 +36,22 @@ export function LedgerForm({
 }) {
   const [state, action, pending] = useActionState(createLedger, null);
   const [type, setType] = useState<LedgerType>(initialType);
-  const [perspective, setPerspective] = useState<"cashbook" | "party">("cashbook");
-  const [color, setColor] = useState<string>(initialType === "taxation" ? "lavender" : initialType === "personal" ? "pink" : "mustard");
+  const [walletKind, setWalletKind] = useState<"cash" | "bank">("bank");
+  const [color, setColor] = useState<string>(initialType === "taxation" ? "lavender" : initialType === "personal" ? "pink" : initialType === "wallet" ? "sky" : "mustard");
   const [people, setPeople] = useState<string[]>(defaultPeople);
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   const chooseType = (t: LedgerType) => {
     setType(t);
-    setColor(t === "taxation" ? "lavender" : t === "personal" ? "pink" : "mustard");
+    setColor(t === "taxation" ? "lavender" : t === "personal" ? "pink" : t === "wallet" ? "sky" : "mustard");
   };
 
   return (
     <form action={action} className="flex flex-col gap-8">
-      <input type="hidden" name="ledger_type" value={type} />
+      <input type="hidden" name="ledger_type" value={type === "wallet" ? "basic" : type} />
       <input type="hidden" name="color" value={color} />
-      {type !== "personal" && <input type="hidden" name="perspective" value={perspective} />}
+      {type !== "personal" && <input type="hidden" name="perspective" value={type === "wallet" ? "cashbook" : "party"} />}
+      {type === "wallet" && <input type="hidden" name="wallet_kind" value={walletKind} />}
 
       <fieldset>
         <legend className="mb-3 text-sm font-medium text-ink-2">Ledger type</legend>
@@ -78,7 +80,7 @@ export function LedgerForm({
         </div>
       </fieldset>
 
-      <Field label="Ledger name" error={err("name")} hint={type === "personal" ? "For example: Goa Trip 2026, Flatmate expenses, Vishwa × Suraj" : "For example: Ramesh Saini – site work"}>
+      <Field label="Ledger name" error={err("name")} hint={type === "personal" ? "For example: Goa Trip 2026, Flatmate expenses, Vishwa × Suraj" : type === "wallet" ? "For example: HDFC Current, Petty cash" : "For example: Ramesh Saini – site work"}>
         {(p) => <Input {...p} name="name" required maxLength={120} autoComplete="off" />}
       </Field>
 
@@ -99,39 +101,33 @@ export function LedgerForm({
         </fieldset>
       ) : (
         <>
-          <Field label="Client" optional hint="Who this ledger is with. Add new people from Client Accounts.">
-            {(p) => (
-              <Select {...p} name="contractor_id" defaultValue={defaultContractor ?? ""}>
-                <option value="">No client</option>
-                {contractors.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-ink-2">How should the balance read?</span>
+          {type === "wallet" ? (
             <Segmented
-              label="Balance meaning"
-              value={perspective}
-              onChange={setPerspective}
+              label="Kind of wallet"
+              value={walletKind}
+              onChange={setWalletKind}
               options={[
-                { value: "cashbook", label: "Cash book" },
-                { value: "party", label: "Party account" },
+                { value: "bank", label: "Bank or UPI" },
+                { value: "cash", label: "Cash" },
               ]}
             />
-            <p className="text-[13px] text-ink-3">
-              {perspective === "cashbook"
-                ? "Balance = opening + money in − money out. Matches your existing sheets. A positive balance is cash on hand, not a debt."
-                : "Shows what the party owes you (or you owe them): payments and advances to them add up, their bills and repayments reduce it."}
-            </p>
-          </div>
+          ) : (
+            <Field label="Client" optional hint="Who this ledger is with. Add new people from Client Accounts.">
+              {(p) => (
+                <Select {...p} name="contractor_id" defaultValue={defaultContractor ?? ""}>
+                  <option value="">No client</option>
+                  {contractors.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Opening balance" optional error={err("opening_balance")} hint="Use a minus sign for a negative opening balance">
+            <Field label="Opening balance" optional error={err("opening_balance")} hint={type === "wallet" ? "What is in it today" : "What they owe you today. Use a minus sign if you owe them."}>
               {(p) => <MoneyInput {...p} name="opening_balance" placeholder="0" />}
             </Field>
             <Field label="Opening balance date" optional error={err("opening_balance_date")}>

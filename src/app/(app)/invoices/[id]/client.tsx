@@ -1,4 +1,5 @@
 "use client";
+import { useWallet, WalletSelect, type WalletOption } from "@/components/app/wallet-select";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -103,6 +104,7 @@ interface InvoiceInfo {
   showQr: boolean;
   allowClaims: boolean;
   showHistory: boolean;
+  wallets: WalletOption[];
 }
 
 export function InvoiceActions({
@@ -238,6 +240,7 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
   const [amount, setAmount] = useState(toDecimal(balance).replace(/\.00$/, ""));
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("upi");
+  const wallet = useWallet(v.wallets, mode);
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
   const [excess, setExcess] = useState(false);
@@ -255,7 +258,7 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
           size="lg"
           className="w-full"
           disabled={pending || paise <= 0n || (over && !excess)}
-          onClick={() => run(() => recordPayment(v.id, { amount, paid_on: date, mode: mode as "upi", reference, notes, allow_excess: excess, idempotency_key: key }), onClose)}
+          onClick={() => run(() => recordPayment(v.id, { amount, paid_on: date, mode: mode as "upi", reference, notes, allow_excess: excess, idempotency_key: key, wallet_ledger_id: wallet.value }), onClose)}
         >
           {pending ? "Saving…" : `Record ${formatINR(paise)}`}
         </Button>
@@ -296,6 +299,7 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
             )}
           </Field>
         </div>
+        <WalletSelect wallets={v.wallets} value={wallet.value} onChange={wallet.setValue} label="Received into" hint="The money shows in this wallet, once. Follows the mode until you change it." />
         <Field label="UTR or reference" optional hint="The same reference cannot be recorded twice">
           {(p) => <Input {...p} value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} autoComplete="off" />}
         </Field>

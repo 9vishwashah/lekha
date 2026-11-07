@@ -13,6 +13,15 @@ export const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+/** What a wallet entry was, when it isn't the money side of an invoice, expense or advance. */
+export const NATURES: { value: string; label: string; direction: "in" | "out" | "both" }[] = [
+  { value: "income", label: "Income", direction: "in" },
+  { value: "expense", label: "Expense", direction: "out" },
+  { value: "capital", label: "Capital added", direction: "in" },
+  { value: "drawings", label: "Personal drawings", direction: "out" },
+  { value: "transfer", label: "Transfer between wallets", direction: "both" },
+];
+
 export const paymentModeLabel = (m: string | null | undefined) => PAYMENT_MODES.find((p) => p.value === m)?.label ?? "";
 
 export interface Workspace {
@@ -63,6 +72,7 @@ export interface Ledger {
   last_activity_at: string;
   created_at: string;
   is_direct: boolean;
+  wallet_kind: "cash" | "bank" | null;
 }
 
 export interface TaxDetail {
@@ -91,6 +101,8 @@ export interface TaxDetail {
 export interface Txn {
   id: string;
   ledger_id: string;
+  wallet_ledger_id: string | null;
+  nature: string | null;
   seq: number;
   voucher_no: string;
   txn_date: string;

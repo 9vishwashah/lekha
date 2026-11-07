@@ -4,17 +4,18 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
+import type { WalletOption } from "./wallet-select";
 import { DateInput } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/bits";
 import { Amount } from "@/components/ui/amount";
-import { reverseEntry, voidEntry } from "@/app/(app)/actions/ledgers";
+import { classifyEntry, reverseEntry, voidEntry } from "@/app/(app)/actions/ledgers";
 import { KIND_LABEL } from "@/lib/domain/ledger";
 import { toPaise, formatINR } from "@/lib/domain/money";
 import { formatDate, formatDateTime } from "@/lib/domain/dates";
 import { formatRate } from "@/lib/domain/tax";
 import { toRateMilli } from "@/lib/domain/money";
-import { paymentModeLabel, type TaxDetail, type Txn } from "@/lib/types";
+import { NATURES, paymentModeLabel, type TaxDetail, type Txn } from "@/lib/types";
 
 /** Full detail of one entry, with the correction actions this user is allowed to take. */
 export function EntryDetail({
@@ -24,6 +25,9 @@ export function EntryDetail({
   onClose,
   onEdit,
   canEdit,
+  wallets,
+  canClassify,
+  perspective,
   reversed,
   today,
   ledgerId,
@@ -34,6 +38,9 @@ export function EntryDetail({
   onClose: () => void;
   onEdit: () => void;
   canEdit: boolean;
+  wallets: WalletOption[];
+  canClassify: boolean;
+  perspective: string;
   reversed: boolean;
   today: string;
   ledgerId: string;
@@ -57,6 +64,8 @@ export function EntryDetail({
   const editable = canEdit && txn.status !== "void" && !reversed && (txn.kind === "regular" || txn.kind === "invoice");
   const reversible = canEdit && txn.status === "posted" && !reversed && ["regular", "invoice", "tax_settlement"].includes(txn.kind);
   const voidable = canEdit && txn.status !== "void" && !reversed;
+  const canTagWallet = canClassify && txn.status === "posted" && txn.is_cash && perspective === "party" && txn.ledger_id === ledgerId;
+  const canTagNature = canClassify && txn.status === "posted" && txn.kind === "regular" && perspective === "cashbook" && txn.ledger_id === ledgerId;
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) =>
     start(async () => {
@@ -144,6 +153,34 @@ export function EntryDetail({
           </section>
         )}
 
+        {step === "view" && canTagWallet && (
+          <Field label="Went through which wallet" optional>
+            {(p) => (
+              <Select {...p} disabled={pending} value={txn.wallet_ledger_id ?? ""} onChange={(e) => run(() => classifyEntry(txn.id, { wallet_ledger_id: e.target.value }))}>
+                <option value="">Not tracked</option>
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
+        {step === "view" && canTagNature && (
+          <Field label="What was this?" optional>
+            {(p) => (
+              <Select {...p} disabled={pending} value={txn.nature ?? ""} onChange={(e) => run(() => classifyEntry(txn.id, { nature: e.target.value }))}>
+                <option value="">Not decided</option>
+                {NATURES.filter((n) => n.direction === txn.direction || n.direction === "both").map((n) => (
+                  <option key={n.value} value={n.value}>
+                    {n.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
         {step === "view" && (editable || reversible || voidable) && (
           <div className="grid gap-2 sm:grid-cols-3">
             {editable && <Button variant="primary" onClick={onEdit}>Edit</Button>}

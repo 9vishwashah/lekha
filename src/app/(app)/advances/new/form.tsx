@@ -1,4 +1,5 @@
 "use client";
+import { walletForMode } from "@/lib/domain/books";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -15,7 +16,7 @@ export function AdvanceForm({
   today,
 }: {
   contractors: { id: string; name: string }[];
-  ledgers: { id: string; name: string; contractor_id: string | null }[];
+  ledgers: { id: string; name: string; contractor_id: string | null; kind: "cash" | "bank" | null }[];
   defaultContractor?: string;
   today: string;
 }) {
@@ -24,6 +25,7 @@ export function AdvanceForm({
   const [state, action, pending] = useActionState(createAdvance, null);
   const [contractor, setContractor] = useState(defaultContractor ?? contractors[0]?.id ?? "");
   const suggested = ledgers.filter((l) => l.contractor_id === contractor);
+  const [mode, setMode] = useState("");
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export function AdvanceForm({
         </Field>
         <Field label="Payment mode" optional>
           {(p) => (
-            <Select {...p} name="payment_mode" defaultValue="">
+            <Select {...p} name="payment_mode" value={mode} onChange={(e) => setMode(e.target.value)}>
               <option value="">Not set</option>
               {PAYMENT_MODES.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -82,7 +84,7 @@ export function AdvanceForm({
         hint="Also records the cash leaving that ledger. Recoveries in cash will be recorded there too. Leave empty to track the advance on its own."
       >
         {(p) => (
-          <Select {...p} name="ledger_id" defaultValue={suggested[0]?.id ?? ""} key={contractor}>
+          <Select {...p} name="ledger_id" defaultValue={suggested[0]?.id ?? walletForMode(ledgers, mode)} key={`${contractor}${mode}`}>
             <option value="">Not paid from a ledger</option>
             {ledgers.map((l) => (
               <option key={l.id} value={l.id}>

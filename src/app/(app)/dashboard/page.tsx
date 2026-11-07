@@ -2,13 +2,18 @@ import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock } from "lucide-react";
 import { getMyProfile, getWorkspace } from "@/lib/server/context";
-import { advancesWithPositions, expenseTotals, ledgerBalances } from "@/lib/server/workspace-data";
+import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
 import { loadSharedAccountRows, peoplePositions } from "@/lib/server/people";
+import { loadBooks } from "@/lib/server/books";
+import { listContractors } from "@/lib/server/queries";
+import { listInvoices } from "@/lib/server/invoices";
+import { profitAndLoss } from "@/lib/domain/books";
+import { BalanceSheet } from "@/components/app/balance-sheet";
 import { PeriodTabs, resolvePeriod } from "@/components/app/period-tabs";
 import { Amount, Money } from "@/components/ui/amount";
 import { Badge, EmptyState, SectionTitle, walletOf } from "@/components/ui/bits";
 import { LinkButton } from "@/components/ui/button";
-import { sum, toPaise } from "@/lib/domain/money";
+import { formatINR, toPaise } from "@/lib/domain/money";
 import { formatDateShort, relativeTime } from "@/lib/domain/dates";
 import { cn } from "@/lib/cn";
 
@@ -19,10 +24,9 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
   const params = (await props.searchParams) as Record<string, string>;
   const period = resolvePeriod(params, ctx.workspace.fy_start_month);
   // A single parallel round; no calls to the sign-in provider while rendering.
-  const [balances, advances, expenses, clients, recent, sharedRows, profile] = await Promise.all([
+  const [balances, advances, clients, recent, sharedRows, profile, invoices, contractors] = await Promise.all([
     ledgerBalances(ctx.db, ctx.workspace.id, period.range),
     advancesWithPositions(ctx.db, ctx.workspace.id, period.today),
-    expenseTotals(ctx.db, ctx.workspace.id, period.range),
     ctx.db.from("contractors").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id).eq("is_active", true),
     ctx.db
       .from("transactions")
@@ -32,12 +36,16 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
       .limit(8),
     loadSharedAccountRows(ctx.db),
     getMyProfile(),
+    listInvoices(ctx.db, ctx.workspace.id),
+    listContractors(ctx.db, ctx.workspace.id),
   ]);
 
-  const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
-  const activeLedgers = balances.entries.filter((e) => e.ledger.status === "active" && !e.ledger.is_direct);
+  const books = await loadBooks(ctx.db, ctx.workspace.id, sharedRows);
+  const pnl = profitAndLoss(books.lines, period.range);
+  const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, contractors);
+  const activeLedgers = balances.entries.filter((e) => e.ledger.status === "active" && !e.ledger.is_direct && !e.ledger.wallet_kind);
+  const nothingYet = books.assets === 0n && books.liabilities === 0n && books.lines.length === 0;
   const openAdvances = advances.filter((a) => a.status === "active" && a.position.outstanding > 0n);
-  const outstanding = sum(openAdvances.map((a) => a.position.outstanding));
   const due = openAdvances
     .filter((a) => a.expected_recovery_date)
     .sort((a, b) => (a.expected_recovery_date! < b.expected_recovery_date! ? -1 : 1))
@@ -79,7 +87,7 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
         </Link>
       )}
 
-      {activeLedgers.length === 0 ? (
+      {nothingYet ? (
         <EmptyState
           title="Start with one ledger"
           body="A ledger is one running account: a client’s site work, a supplier with GST bills, or a shared account with a friend. Create one and add the first entry in under a minute."
@@ -94,14 +102,21 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
         />
       ) : (
         <>
-          {/* Cash movement for the chosen period */}
-          <section aria-label="Cash movement" className="grid grid-cols-2 gap-3">
+          <BalanceSheet books={books} plural={plural} />
+          {people.invitedOwesYou + people.invitedYouOwe > 0n && (
+            <p className="text-[13px] text-ink-3">
+              Accounts other people run aren&apos;t part of these books: there you are owed {formatINR(people.invitedOwesYou)} and owe {formatINR(people.invitedYouOwe)}.
+            </p>
+          )}
+
+          {/* The chosen period. Money is what moved; income and costs are what was earned and incurred. */}
+          <section aria-label={period.label} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="min-w-0 rounded-[var(--radius-card)] bg-green p-5 text-white sm:p-6">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold">Money in</span>
                 <ArrowDownLeft className="size-5" />
               </div>
-              <Amount value={balances.moneyIn} size="lg" className="mt-6 block truncate text-[1.7rem] sm:text-5xl" />
+              <Amount value={balances.moneyIn} size="lg" className="mt-6 block truncate text-[1.7rem] sm:text-[2.25rem]" />
               <p className="mt-1 truncate text-[13px] opacity-80">{period.label}</p>
             </div>
             <div className="min-w-0 rounded-[var(--radius-card)] bg-red p-5 text-white sm:p-6">
@@ -109,29 +124,11 @@ export default async function Dashboard(props: PageProps<"/dashboard">) {
                 <span className="text-sm font-semibold">Money out</span>
                 <ArrowUpRight className="size-5" />
               </div>
-              <Amount value={balances.moneyOut} size="lg" className="mt-6 block truncate text-[1.7rem] sm:text-5xl" />
+              <Amount value={balances.moneyOut} size="lg" className="mt-6 block truncate text-[1.7rem] sm:text-[2.25rem]" />
               <p className="mt-1 truncate text-[13px] opacity-80">{period.label}</p>
             </div>
-          </section>
-
-          {/* Positions today. Each is its own kind of money and is never added to the others. */}
-          <section aria-label="Positions today" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Tile
-              color="bg-mustard"
-              label="People owe you"
-              value={people.owesYou}
-              href="/contractors?sort=owes"
-              note={people.owesYou > 0n ? `${plural(people.peopleOwingYou)}${people.sharedIncluded ? " · incl. shared" : ""}` : "Nothing due"}
-            />
-            <Tile
-              color="bg-lavender"
-              label="You owe people"
-              value={people.youOwe}
-              href="/contractors?sort=owe"
-              note={people.youOwe > 0n ? `${plural(people.peopleYouOwe)}${people.sharedIncluded ? " · incl. shared" : ""}` : "All clear"}
-            />
-            <Tile color="bg-pink" label="Advances out" value={outstanding} href="/advances" note={`${openAdvances.length} not recovered`} />
-            <Tile color="bg-sky" label="Expenses" value={expenses.total} href="/expenses" note={`${expenses.count} · ${period.label.toLowerCase()}`} />
+            <Tile color="bg-mustard" label="Income" value={pnl.totalIncome} href="/books" note="Invoiced and earned, before GST" />
+            <Tile color="bg-lavender" label={pnl.profit < 0n ? "Loss" : "Profit"} value={pnl.profit < 0n ? -pnl.profit : pnl.profit} href="/books" note={`After ${formatINR(pnl.totalCosts)} of costs`} />
           </section>
 
           <p className="text-[15px] text-ink-2">

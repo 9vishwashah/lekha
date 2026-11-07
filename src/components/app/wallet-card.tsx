@@ -5,7 +5,7 @@ import { Amount } from "@/components/ui/amount";
 import { walletOf } from "@/components/ui/bits";
 import { cn } from "@/lib/cn";
 
-const TYPE_LABEL: Record<string, string> = { basic: "Basic ledger", taxation: "Taxation ledger", personal: "Shared account" };
+const TYPE_LABEL: Record<string, string> = { basic: "Ledger", taxation: "Taxation ledger", personal: "Shared account", cash: "Cash", bank: "Bank & UPI" };
 
 /** A ledger as a solid-colour wallet card. The balance is the hero; the meaning sits under it. */
 export function WalletCard({

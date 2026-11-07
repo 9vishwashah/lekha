@@ -52,7 +52,7 @@ export function LedgerSettings({
   const router = useRouter();
   const personal = ledger.ledger_type === "personal";
   const [state, action, saving] = useActionState(updateLedger.bind(null, ledger.id), null);
-  const [perspective, setPerspective] = useState(ledger.perspective === "party" ? "party" : "cashbook");
+  const [walletKind, setWalletKind] = useState<"cash" | "bank">(ledger.wallet_kind === "cash" ? "cash" : "bank");
   const [pending, start] = useTransition();
   const [perms, setPerms] = useState<Perms>({
     can_create: personal,
@@ -106,19 +106,22 @@ export function LedgerSettings({
                     </Select>
                   )}
                 </Field>
-                <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium text-ink-2">How the balance reads</span>
-                  <input type="hidden" name="perspective" value={perspective} />
-                  <Segmented
-                    label="Balance meaning"
-                    value={perspective}
-                    onChange={setPerspective}
-                    options={[
-                      { value: "cashbook", label: "Cash book" },
-                      { value: "party", label: "Party account" },
-                    ]}
-                  />
-                </div>
+                <input type="hidden" name="perspective" value={ledger.perspective} />
+                {ledger.perspective === "cashbook" && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-ink-2">Kind of wallet</span>
+                    <input type="hidden" name="wallet_kind" value={walletKind} />
+                    <Segmented
+                      label="Kind of wallet"
+                      value={walletKind}
+                      onChange={setWalletKind}
+                      options={[
+                        { value: "bank", label: "Bank or UPI" },
+                        { value: "cash", label: "Cash" },
+                      ]}
+                    />
+                  </div>
+                )}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Opening balance" error={err("opening_balance")} hint="Changing it is recorded in the activity log">
                     {(p) => <MoneyInput {...p} name="opening_balance" defaultValue={ledger.opening_balance} />}

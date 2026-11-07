@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getWorkspace } from "@/lib/server/context";
-import { listContractors, listLedgers } from "@/lib/server/queries";
+import { listContractors, listLedgers, walletsOf } from "@/lib/server/queries";
 import { EmptyState, PageHeader } from "@/components/ui/bits";
 import { LinkButton } from "@/components/ui/button";
 import { todayISO } from "@/lib/domain/dates";
@@ -26,7 +26,7 @@ export default async function RecordPayment() {
       ) : (
         <PaymentPageForm
           clients={clients}
-          cashLedgers={ledgers.filter((l) => l.status === "active" && l.perspective === "cashbook").map((l) => ({ id: l.id, name: l.name }))}
+          cashLedgers={walletsOf(ledgers)}
           today={todayISO()}
         />
       )}

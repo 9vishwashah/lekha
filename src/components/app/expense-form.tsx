@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PAYMENT_MODES } from "@/lib/types";
 import { SplitWith } from "@/components/app/split-with";
 import type { ClientOption } from "@/components/app/client-picker";
+import { useWallet, WalletSelect, type WalletOption } from "@/components/app/wallet-select";
 
 export interface ExpenseValues {
   id: string;
@@ -44,7 +45,7 @@ export function ExpenseForm({
 }: {
   categories: { id: string; name: string }[];
   contractors: { id: string; name: string }[];
-  ledgers: { id: string; name: string; perspective?: string }[];
+  ledgers: WalletOption[];
   today: string;
   expense?: ExpenseValues;
   clients?: ClientOption[];
@@ -59,7 +60,8 @@ export function ExpenseForm({
   const [adding, start] = useTransition();
   const [amount, setAmount] = useState(expense?.amount ?? "");
   const [split, setSplit] = useState({ splitting: Boolean(withClient), theyPaid: false });
-  const paidFrom = split.splitting ? ledgers.filter((l) => l.perspective === "cashbook") : ledgers;
+  const [mode, setMode] = useState(expense?.payment_mode ?? "");
+  const wallet = useWallet(ledgers, mode);
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   useEffect(() => {
@@ -123,7 +125,7 @@ export function ExpenseForm({
         </Field>
         <Field label="Payment mode" optional>
           {(p) => (
-            <Select {...p} name="payment_mode" defaultValue={expense?.payment_mode ?? ""}>
+            <Select {...p} name="payment_mode" value={mode} onChange={(e) => setMode(e.target.value)}>
               <option value="">Not set</option>
               {PAYMENT_MODES.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -159,23 +161,14 @@ export function ExpenseForm({
         )
       ) : (
         !split.theyPaid && (
-          <Field
-            key={split.splitting ? "split" : "plain"}
-            label="Paid from a ledger"
-            optional
-            hint={split.splitting ? "The full amount leaves this cash or bank ledger, once. Only your share counts as your expense." : "Also records a Money Out entry in that ledger, linked to this expense. Leave empty if the cash isn't tracked in a ledger."}
-          >
-            {(p) => (
-              <Select {...p} name="ledger_id" defaultValue="">
-                <option value="">Not paid from a ledger</option>
-                {paidFrom.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+          <WalletSelect
+            wallets={ledgers}
+            value={wallet.value}
+            onChange={wallet.setValue}
+            name="ledger_id"
+            label="Paid from"
+            hint={split.splitting ? "The full amount leaves this wallet, once. Only your share counts as your expense." : "Records the money leaving this wallet, linked to this expense. Follows the payment mode until you change it."}
+          />
         )
       )}
       {!split.splitting && (

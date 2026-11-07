@@ -24,6 +24,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { DateRangeInput } from "@/components/ui/date-picker";
 import { EntryComposer, type TaxDefaults } from "./entry-composer";
 import { EntryDetail } from "./entry-detail";
+import type { WalletOption } from "./wallet-select";
 import { ShareSheet } from "./share-sheet";
 import { LiveRefresh } from "./live-refresh";
 import { KIND_LABEL } from "@/lib/domain/ledger";
@@ -52,6 +53,7 @@ export function LedgerScreen({
   userId,
   today,
   taxDefaults,
+  wallets,
   filters,
   openAdd,
   hasFilters,
@@ -92,6 +94,7 @@ export function LedgerScreen({
   userId: string;
   today: string;
   taxDefaults: TaxDefaults;
+  wallets: WalletOption[];
   filters: { q: string; dir: string; status: string; from: string; to: string };
   openAdd: boolean;
   hasFilters: boolean;
@@ -494,6 +497,7 @@ export function LedgerScreen({
         taxDefaults={taxDefaults}
         canTax={access.canViewTax}
         canSettleTax={access.kind === "member"}
+        wallets={wallets}
         editing={editing}
         editingTax={editing ? (tax[editing.id] ?? null) : null}
       />
@@ -502,7 +506,10 @@ export function LedgerScreen({
         tax={selected ? (tax[selected.txn.id] ?? null) : null}
         names={names}
         reversed={selected?.reversed ?? false}
-        canEdit={selected ? canEditTxn(selected.txn) && !archived : false}
+        canEdit={selected ? canEditTxn(selected.txn) && !archived && selected.txn.ledger_id === ledger.id : false}
+        wallets={wallets}
+        canClassify={access.kind === "member" && access.canCreate}
+        perspective={ledger.perspective}
         today={today}
         ledgerId={ledger.id}
         onClose={() => setSelected(null)}

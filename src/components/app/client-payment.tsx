@@ -9,6 +9,7 @@ import { DateInput } from "@/components/ui/date-picker";
 import { Segmented } from "@/components/ui/segmented";
 import { PAYMENT_MODES } from "@/lib/types";
 import { formatINR, tryPaise } from "@/lib/domain/money";
+import { useWallet, WalletSelect, type WalletOption } from "@/components/app/wallet-select";
 
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
@@ -28,7 +29,7 @@ export function ClientPaymentForm({
 }: {
   client?: { id: string; name: string };
   clients?: { id: string; name: string }[];
-  cashLedgers: { id: string; name: string }[];
+  cashLedgers: WalletOption[];
   today: string;
   onDone: (clientId: string) => void;
 }) {
@@ -39,7 +40,8 @@ export function ClientPaymentForm({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("");
-  const [ledger, setLedger] = useState("");
+  const wallet = useWallet(cashLedgers, mode);
+  const ledger = wallet.value;
   const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -125,19 +127,14 @@ export function ClientPaymentForm({
           </Field>
         )}
       </div>
-      {kind !== "opening" && cashLedgers.length > 0 && (
-        <Field label={kind === "received" ? "Into which ledger" : "From which ledger"} optional hint="Also records the cash in that ledger, once. Leave empty if you don't track it.">
-          {(p) => (
-            <Select {...p} value={ledger} onChange={(e) => setLedger(e.target.value)}>
-              <option value="">Not tracked</option>
-              {cashLedgers.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+      {kind !== "opening" && (
+        <WalletSelect
+          wallets={cashLedgers}
+          value={ledger}
+          onChange={wallet.setValue}
+          label={kind === "received" ? "Into which wallet" : "From which wallet"}
+          hint="The cash is recorded there, once. Follows the mode until you change it."
+        />
       )}
       {kind !== "opening" && (
         <Field label="Reference" optional>

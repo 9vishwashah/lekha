@@ -46,7 +46,7 @@ export default async function ExpensePage(props: PageProps<"/expenses/[id]">) {
             expense={expense as ExpenseValues}
             categories={categories ?? []}
             contractors={contractors.map((c) => ({ id: c.id, name: c.name }))}
-            ledgers={ledgers.map((l) => ({ id: l.id, name: l.name }))}
+            ledgers={ledgers.map((l) => ({ id: l.id, name: l.name, kind: l.wallet_kind }))}
             today={todayISO()}
           />
           <VoidExpense id={expense.id} linked={Boolean(expense.transaction_id)} />

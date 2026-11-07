@@ -17,21 +17,33 @@ export async function ledgerBalances(db: Db, workspaceId: string, range: DateRan
     if (list) list.push(r);
     else byLedger.set(r.ledger_id, [r]);
   }
+  // Money on a party ledger that went through a wallet moves that wallet's balance too. It is one
+  // entry, so the totals below count it once, on the party ledger's side.
+  const passing = rows.filter((r) => r.wallet_ledger_id && r.status === "posted" && r.is_cash);
+  const through = new Map<string, BalanceRow[]>();
+  for (const r of passing) through.set(r.wallet_ledger_id!, [...(through.get(r.wallet_ledger_id!) ?? []), r]);
   const entries = ledgers.map((l) => {
-    const txns = byLedger.get(l.id) ?? [];
+    const own = byLedger.get(l.id) ?? [];
+    const txns = [...own, ...(through.get(l.id) ?? [])];
     if (l.ledger_type === "personal") return { ledger: l, statement: null, periodStatement: null, count: 0 };
     const ledger = { perspective: l.perspective as Perspective, opening_balance: l.opening_balance };
     return {
       ledger: l,
       statement: buildStatement(ledger, txns),
       periodStatement: buildStatement(ledger, txns, range),
-      count: txns.filter((t) => t.status === "posted").length,
+      count: own.filter((t) => t.status === "posted").length,
     };
   });
   const active = entries.filter((e) => e.ledger.status === "active");
   const period = aggregate(active.map((e) => e.periodStatement).filter(Boolean) as Statement<BalanceRow>[]);
   const now = aggregate(active.map((e) => e.statement).filter(Boolean) as Statement<BalanceRow>[]);
-  return { entries, moneyIn: period.moneyIn, moneyOut: period.moneyOut, receivable: now.receivable, payable: now.payable, cashBalance: now.cashBalance };
+  // Moving your own money between wallets is neither in nor out.
+  const inPeriod = (r: BalanceRow) => (!range.from || r.txn_date >= range.from) && (!range.to || r.txn_date <= range.to);
+  const liveLedgers = new Set(active.map((e) => e.ledger.id));
+  const twice = passing.filter((r) => inPeriod(r) && liveLedgers.has(r.wallet_ledger_id!) && liveLedgers.has(r.ledger_id));
+  const transfers = rows.filter((r) => r.nature === "transfer" && r.status === "posted" && inPeriod(r) && liveLedgers.has(r.ledger_id));
+  const drop = (direction: "in" | "out") => sum([...twice, ...transfers].filter((r) => r.direction === direction).map((r) => toPaise(r.amount)));
+  return { entries, moneyIn: period.moneyIn - drop("in"), moneyOut: period.moneyOut - drop("out"), receivable: now.receivable, payable: now.payable, cashBalance: now.cashBalance };
 }
 
 export interface AdvanceRow {

@@ -14,6 +14,7 @@ import { Badge, SectionTitle } from "@/components/ui/bits";
 import { LinkButton } from "@/components/ui/button";
 import { InvoiceSheet } from "@/components/app/invoice/invoice-sheet";
 import { ScaledSheet } from "@/components/app/invoice/scaled-sheet";
+import { listLedgers, walletsOf } from "@/lib/server/queries";
 import { ClientPagePanel, DraftActions, FilesPanel, InvoiceActions, LinkPanel, PaymentHistory, SubmissionsPanel } from "./client";
 
 export const metadata = { title: "Invoice" };
@@ -64,6 +65,7 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
   const open = i.status === "issued" && !proforma && balance > 0n;
   const ledger = i.ledger_id ? (await ctx.db.from("ledgers").select("id, name").eq("id", i.ledger_id).maybeSingle()).data : null;
   const excess = toPaise(i.amount_received) - toPaise(i.grand_total);
+  const wallets = open && ctx.canWrite ? walletsOf(await listLedgers(ctx.db, ctx.workspace.id)) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,7 +117,7 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
       )}
       {ctx.canWrite && i.status === "issued" && (
         <InvoiceActions
-          invoice={{ id, no: i.invoice_no!, proforma, open, balance: balance.toString(), total: i.grand_total, received: i.amount_received, due: i.due_date, phone: i.client_phone, clientName: i.client_contact || i.client_name || "there", business: doc.seller.name, notes: i.notes ?? "", terms: i.terms ?? "", showQr: i.show_digital_qr, allowClaims: i.allow_payment_claims, showHistory: i.show_payment_history }}
+          invoice={{ id, no: i.invoice_no!, proforma, open, balance: balance.toString(), total: i.grand_total, received: i.amount_received, due: i.due_date, phone: i.client_phone, clientName: i.client_contact || i.client_name || "there", business: doc.seller.name, notes: i.notes ?? "", terms: i.terms ?? "", showQr: i.show_digital_qr, allowClaims: i.allow_payment_claims, showHistory: i.show_payment_history, wallets }}
           url={url}
           today={today}
           suggested={reminderStageFor(i.due_date, today)}

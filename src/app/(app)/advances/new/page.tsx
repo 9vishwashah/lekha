@@ -20,7 +20,7 @@ export default async function NewAdvance(props: PageProps<"/advances/new">) {
       ) : (
         <AdvanceForm
           contractors={active.map((c) => ({ id: c.id, name: c.name }))}
-          ledgers={ledgers.filter((l) => l.status === "active" && l.ledger_type !== "personal").map((l) => ({ id: l.id, name: l.name, contractor_id: l.contractor_id }))}
+          ledgers={ledgers.filter((l) => l.status === "active" && l.ledger_type !== "personal").map((l) => ({ id: l.id, name: l.name, contractor_id: l.contractor_id, kind: l.wallet_kind }))}
           defaultContractor={params.contractor}
           today={todayISO()}
         />

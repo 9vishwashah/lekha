@@ -1,6 +1,7 @@
 import { IntentLink } from "@/components/app/intent-link";
 import { FilterChips } from "@/components/app/pending-nav";
 import { loadPeople } from "@/lib/server/profiles";
+import { listInvoices } from "@/lib/server/invoices";
 import { getWorkspace } from "@/lib/server/context";
 import { listContractors } from "@/lib/server/queries";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
@@ -24,13 +25,14 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
   const params = (await props.searchParams) as Record<string, string>;
   const show = FILTERS.some((f) => f.key === params.show) ? params.show : "all";
   const q = (params.q ?? "").trim().toLowerCase();
-  const [contractors, balances, advances, sharedRows] = await Promise.all([
+  const [contractors, balances, advances, sharedRows, invoices] = await Promise.all([
     listContractors(ctx.db, ctx.workspace.id),
     ledgerBalances(ctx.db, ctx.workspace.id),
     advancesWithPositions(ctx.db, ctx.workspace.id, todayISO()),
     loadSharedAccountRows(ctx.db),
+    listInvoices(ctx.db, ctx.workspace.id),
   ]);
-  const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows);
+  const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, contractors);
   const accounts = await loadPeople(ctx.db, contractors.map((c) => c.linked_user_id));
   const visible = contractors
     .filter((c) => (show === "inactive" ? !c.is_active : c.is_active && (show === "all" || c.kind === show)))

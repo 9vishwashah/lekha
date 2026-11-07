@@ -46,6 +46,7 @@ const ledgerSchema = z.object({
   name: z.string().trim().min(1, "Give the ledger a name").max(120),
   ledger_type: z.enum(["basic", "taxation", "personal"]),
   perspective: z.enum(["cashbook", "party"]).optional(),
+  wallet_kind: z.enum(["cash", "bank"]).optional().or(z.literal("")),
   contractor_id: uuid.optional().or(z.literal("")).transform((v) => v || undefined),
   reference_no: optionalText(60),
   opening_balance: signedMoney.optional().or(z.literal("")),
@@ -141,6 +142,8 @@ const entryBase = z.object({
     status: z.enum(["draft", "posted"]).default("posted"),
     idempotency_key: z.string().min(8).max(120).optional(),
     tax: taxSchema.nullable().optional(),
+    wallet_ledger_id: uuid.optional().or(z.literal("")),
+    nature: z.enum(["income", "expense", "capital", "drawings", "transfer"]).optional().or(z.literal("")),
 });
 
 const entrySchema = entryBase
@@ -172,6 +175,17 @@ export async function amendEntry(id: string, ledgerId: string, input: Partial<Om
   if (error) return fail(error);
   refreshLedger(ledgerId);
   return { ok: true, message: "Entry updated" };
+}
+
+/** Which wallet an entry went through, or what it was. The money itself does not change. */
+export async function classifyEntry(id: string, input: { wallet_ledger_id?: string; nature?: string }): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("classify_entry", { p_id: uuid.parse(id), p: input });
+  if (error) return fail(error);
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/books");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Saved" };
 }
 
 export async function voidEntry(id: string, ledgerId: string, reason: string): Promise<ActionResult> {

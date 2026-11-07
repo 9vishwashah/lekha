@@ -20,6 +20,8 @@ let contractorA: string;
 
 const j = (v: unknown) => JSON.stringify(v);
 
+let walletA: string;
+
 async function expectError(promise: Promise<unknown>, pattern: RegExp) {
   await expect(promise).rejects.toThrow(pattern);
 }
@@ -179,9 +181,10 @@ describe("transactions and tax", () => {
 
 describe("expenses and advances", () => {
   it("creates an expense and its single ledger entry atomically, and voids both", async () => {
+    walletA = (await as(db, A, (q) => q<{ id: string }>("select id from public.ledgers where workspace_id = $1 and wallet_kind = 'cash'", [wsA])))[0].id;
     const [cat] = await as(db, A, (q) => q<{ id: string }>("select id from public.expense_categories where workspace_id = $1 and name = 'Materials'", [wsA]));
     const res = await rpc<{ id: string; transaction_id: string }>(db, A, "public.create_expense($1::jsonb)", [
-      j({ workspace_id: wsA, category_id: cat.id, expense_date: "2026-04-05", title: "Cement", amount: "4200", ledger_id: ledgerA }),
+      j({ workspace_id: wsA, category_id: cat.id, expense_date: "2026-04-05", title: "Cement", amount: "4200", ledger_id: walletA }),
     ]);
     const txns = await as(db, A, (q) => q("select id from public.transactions where id = $1 and kind = 'expense'", [res.transaction_id]));
     expect(txns).toHaveLength(1);
@@ -194,14 +197,14 @@ describe("expenses and advances", () => {
   });
 
   it("rolls back the ledger entry when the expense itself fails", async () => {
-    const before = await as(db, A, (q) => q<{ n: number }>("select count(*)::int as n from public.transactions where ledger_id = $1", [ledgerA]));
+    const before = await as(db, A, (q) => q<{ n: number }>("select count(*)::int as n from public.transactions where ledger_id = $1", [walletA]));
     await expectError(
       rpc(db, A, "public.create_expense($1::jsonb)", [
-        j({ workspace_id: wsA, category_id: "00000000-0000-0000-0000-000000000000", expense_date: "2026-04-05", title: "Bad", amount: "10", ledger_id: ledgerA }),
+        j({ workspace_id: wsA, category_id: "00000000-0000-0000-0000-000000000000", expense_date: "2026-04-05", title: "Bad", amount: "10", ledger_id: walletA }),
       ]),
       /foreign key/,
     );
-    const after = await as(db, A, (q) => q<{ n: number }>("select count(*)::int as n from public.transactions where ledger_id = $1", [ledgerA]));
+    const after = await as(db, A, (q) => q<{ n: number }>("select count(*)::int as n from public.transactions where ledger_id = $1", [walletA]));
     expect(after[0].n).toBe(before[0].n);
   });
 

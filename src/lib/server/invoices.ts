@@ -230,12 +230,12 @@ export async function listLibrary(db: Db, workspaceId: string): Promise<LibraryI
 }
 
 const LIST_COLUMNS =
-  "id, workspace_id, invoice_type, source, status, invoice_no, title, invoice_date, due_date, contractor_id, ledger_id, client_name, client_business, client_phone, grand_total, amount_received, taxable_total, cgst_total, sgst_total, igst_total, tax_total, sent_at, first_viewed_at, updated_at, created_at";
+  "id, workspace_id, invoice_type, source, status, invoice_no, title, invoice_date, due_date, contractor_id, ledger_id, client_name, client_business, client_phone, grand_total, amount_received, taxable_total, cgst_total, sgst_total, igst_total, tax_total, transaction_id, sent_at, first_viewed_at, updated_at, created_at";
 
 export type InvoiceListRow = Pick<
   InvoiceRow,
   | "id" | "workspace_id" | "invoice_type" | "source" | "status" | "invoice_no" | "title" | "invoice_date" | "due_date" | "contractor_id" | "ledger_id"
-  | "client_name" | "client_business" | "client_phone" | "grand_total" | "amount_received" | "taxable_total" | "cgst_total" | "sgst_total" | "igst_total" | "tax_total"
+  | "client_name" | "client_business" | "client_phone" | "grand_total" | "amount_received" | "taxable_total" | "cgst_total" | "sgst_total" | "igst_total" | "tax_total" | "transaction_id"
   | "sent_at" | "first_viewed_at" | "updated_at" | "created_at"
 >;
 
