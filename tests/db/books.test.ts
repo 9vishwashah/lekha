@@ -17,7 +17,7 @@ async function load(ws: string, who: Who = OWNER): Promise<BooksInput> {
     const payers = await rows<{ shared_expense_id: string; participant_id: string; amount_paid: string }>("select p.* from public.shared_expense_payers p join public.shared_expenses e on e.id = p.shared_expense_id where e.workspace_id = $1");
     const shares = await rows<{ shared_expense_id: string; participant_id: string; share_amount: string }>("select s.* from public.shared_expense_shares s join public.shared_expenses e on e.id = s.shared_expense_id where e.workspace_id = $1");
     const expenses = await rows<BooksInput["sharedExpenses"][number]>("select * from public.shared_expenses where workspace_id = $1");
-    const advances = await rows<BooksInput["advances"][number] & { id: string }>("select id, ledger_id, amount, status from public.advances where workspace_id = $1");
+    const advances = await rows<BooksInput["advances"][number] & { id: string }>("select id, contractor_id, purpose, ledger_id, amount, status from public.advances where workspace_id = $1");
     const allocations = await rows<{ advance_id: string; kind: string; amount: string; status: string; alloc_date: string; transaction_id: string | null }>("select * from public.advance_allocations where workspace_id = $1");
     const iso = <T extends Record<string, unknown>>(r: T, ...keys: string[]) => {
       const out: Record<string, unknown> = { ...r };
@@ -203,7 +203,7 @@ describe("books", () => {
     await rpc(db, OWNER, "public.create_advance($1::jsonb)", [j({ workspace_id: w.ws, contractor_id: c, amount: "1000", given_date: "2026-10-01", ledger_id: party })]);
     await rpc(db, OWNER, "public.create_advance($1::jsonb)", [j({ workspace_id: w.ws, contractor_id: c, amount: "500", given_date: "2026-10-01", ledger_id: w.cash })]);
     const b = await books(w.ws);
-    expect(b.debtors).toBe(p(1000));
+    expect(b.debtors).toBe(p(1500)); // one person: 1000 in the party ledger + 500 advanced from cash
     expect(b.advances).toBe(p(500));
     expect(b.cash).toBe(-p(500));
     expect(b.unassigned).toBe(-p(1000));
@@ -372,6 +372,57 @@ describe("books", () => {
     const row = await as(db, OWNER, (q) => q<{ perspective: string }>("select perspective from public.ledgers where id = $1", [l]));
     expect(row[0].perspective).toBe("party");
     await expect(w.ledger({ name: "Bad", ledger_type: "basic", wallet_kind: "bank", contractor_id: c })).rejects.toThrow(/no client/);
+  });
+
+  it("money paid on someone's behalf is owed back, never a cost, and nets with what you owe them", async () => {
+    const w = await world("Namya");
+    const n = await w.client("Namya");
+    await rpc(db, OWNER, "public.update_ledger($1, $2::jsonb)", [w.bank, j({ opening_balance: "9969" })]);
+    // They paid 195 more than their share on your account together...
+    await rpc(db, OWNER, "public.record_client_opening($1::jsonb)", [j({ workspace_id: w.ws, contractor_id: n, amount: "195", they_owe: false, txn_date: "2026-10-01" })]);
+    // ...and you paid 2,699 for their glasses from the bank.
+    await rpc(db, OWNER, "public.create_advance($1::jsonb)", [j({ workspace_id: w.ws, contractor_id: n, amount: "2699", given_date: "2026-11-07", ledger_id: w.bank, purpose: "Lenskart" })]);
+    const b = await books(w.ws);
+    expect(b.positions.get(n)).toBe(p(2504));
+    expect(b.creditors).toBe(0n);
+    expect(b.bank).toBe(p(7270));
+    expect(b.profit).toBe(0n);
+    expect(b.breakdown.get(n)!.map((x) => x.note).sort()).toEqual(["Advance", "Shared account"]);
+    expectBalanced(b);
+  });
+
+  it("an archived ledger still counts: archiving hides it, it does not settle it", async () => {
+    const w = await world("Archived");
+    const c = await w.client("Regal");
+    const party = await w.ledger({ name: "Regal", ledger_type: "taxation", contractor_id: c });
+    await w.post({ ledger_id: party, kind: "invoice", direction: "out", tax: { taxable_amount: "5500", gst_applicable: false, tds_applicable: false } });
+    await rpc(db, OWNER, "public.set_ledger_status($1, 'archived')", [party]);
+    const b = await books(w.ws);
+    expect(b.positions.get(c)).toBe(p(5500));
+    expect(b.breakdown.get(c)![0].note).toBe("Archived ledger");
+    expectBalanced(b);
+  });
+
+  it("points out a bill raised and an invoice that look like the same job, without dropping either", async () => {
+    const w = await world("Twin");
+    const a = await w.client("Aagam");
+    const s = await w.client("Sumit");
+    const party = await w.ledger({ name: "Regal Impex", ledger_type: "taxation", contractor_id: a });
+    await w.post({ ledger_id: party, kind: "invoice", direction: "out", txn_date: "2026-10-20", tax: { taxable_amount: "5500", gst_applicable: false, tds_applicable: false } });
+    await w.invoice({ client: s, rate: "5500" }); // 5 Oct
+    const b = await books(w.ws);
+    expect(b.duplicates).toHaveLength(1);
+    expect(b.debtors).toBe(p(11000));
+    expectBalanced(b);
+  });
+
+  it("cash that moved outside the wallets sits with what you put in, not with what you owe", async () => {
+    const w = await world("Pocket");
+    await rpc(db, OWNER, "public.create_expense($1::jsonb)", [j({ workspace_id: w.ws, category_id: w.category, expense_date: "2026-10-03", title: "Tea", amount: "300" })]);
+    const b = await books(w.ws);
+    expect(b.liabilities).toBe(0n);
+    expect(b.pocket).toBe(p(300));
+    expectBalanced(b);
   });
 
   it("the period only moves profit, and a whole-time view equals the sheet", async () => {

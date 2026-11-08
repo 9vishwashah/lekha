@@ -18,7 +18,7 @@ import type { ledgerBalances } from "./workspace-data";
 export interface PersonPosition {
   owesYou: Paise;
   youOwe: Paise;
-  sources: { ledgerId: string; ledgerName: string; kind: "party" | "shared" | "invoice"; amount: Paise }[]; // + they owe you, − you owe
+  sources: { ledgerId: string; ledgerName: string; kind: "party" | "shared" | "invoice"; amount: Paise; external?: boolean }[]; // + they owe you, − you owe
 }
 
 interface ParticipantRow {
@@ -179,7 +179,7 @@ export function peoplePositions(
       } else if (acct.ledger.workspace_id !== workspaceId && acct.me!.position !== 0) {
         // Someone else's shared account you were invited to.
         const card = line.other.user_id ? cardFor.get(line.other.user_id) : undefined;
-        if (card) add(card, { ledgerId: acct.ledger.id, ledgerName: acct.ledger.name, kind: "shared", amount: line.amount });
+        if (card) add(card, { ledgerId: acct.ledger.id, ledgerName: acct.ledger.name, kind: "shared", amount: line.amount, external: true });
         else if (line.amount > 0n) sharedOwesYou += line.amount;
         else sharedYouOwe += -line.amount;
       }
@@ -205,3 +205,7 @@ export function peoplePositions(
 }
 
 export const net = (p: PersonPosition | undefined): Paise => (p ? p.owesYou - p.youOwe : 0n);
+
+/** What stands in accounts the other person runs: theirs to keep, so outside your own books. */
+export const externalNet = (p: PersonPosition | undefined): Paise =>
+  (p?.sources ?? []).filter((s) => s.external).reduce((total, s) => total + s.amount, 0n);

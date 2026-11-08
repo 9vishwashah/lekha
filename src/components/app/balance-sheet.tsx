@@ -56,19 +56,22 @@ export function BalanceSheet({ books, plural }: { books: Books; plural: (n: numb
   const left: Row[] = [
     { label: "Cash in hand", value: b.cash, href: "/ledgers", always: true },
     { label: "Bank & UPI", value: b.bank, href: "/ledgers", always: true },
-    { label: "People owe you", term: `Sundry debtors · ${plural(b.debtorCount)}`, value: b.debtors, href: "/contractors?sort=owes", always: true },
-    { label: "Advances given", value: b.advances, href: "/advances" },
+    { label: "People owe you", term: `Sundry debtors · ${plural(b.debtorCount)}${b.advances ? " · incl. advances" : ""}`, value: b.debtors, href: "/contractors?show=owes", always: true },
     { label: "GST credit", term: "More paid than collected", value: b.gstCredit, href: "/reports/tax" },
     { label: "TDS deducted by clients", value: b.tdsReceivable, href: "/reports/tax" },
-    { label: "Received, not in a wallet", term: "Say which wallet in Books", value: b.unassigned > 0n ? b.unassigned : 0n, href: "/books" },
   ];
   const right: Row[] = [
-    { label: "You owe people", term: `Sundry creditors · ${plural(b.creditorCount)}`, value: b.creditors, href: "/contractors?sort=owe", always: true },
+    { label: "You owe people", term: `Sundry creditors · ${plural(b.creditorCount)}`, value: b.creditors, href: "/contractors?show=owe", always: true },
     { label: "GST to pay", value: b.gstPayable, href: "/reports/tax" },
     { label: "TDS to pay", value: b.tdsDue, href: "/reports/tax" },
-    { label: "Spent, not from a wallet", term: "Say which wallet in Books", value: b.unassigned < 0n ? -b.unassigned : 0n, href: "/books" },
     { label: "Opening capital", term: "Balances you started with", value: b.capital },
     { label: "Capital added, less drawings", value: b.introduced },
+    {
+      label: b.pocket >= 0n ? "Paid from your own pocket" : "Received outside your wallets",
+      term: "Money that moved without naming a wallet",
+      value: b.pocket,
+      href: "/books#wallets",
+    },
     { label: b.profit < 0n ? "Loss to date" : "Profit to date", term: "Income less costs", value: b.profit, href: "/books", always: true },
     { label: "Uncategorised entries", term: "Not yet income, cost or capital", value: b.uncategorised, href: "/books" },
   ];
@@ -77,7 +80,7 @@ export function BalanceSheet({ books, plural }: { books: Books; plural: (n: numb
     <>
       <div className="grid gap-3 lg:grid-cols-2">
         <Side title="What you have" note="Assets" total={b.assets} rows={left} tone="bg-tea text-seashell" />
-        <Side title="What you owe, and what is yours" note="Liabilities and net worth" total={b.liabilities + b.equity} rows={right} tone="bg-ink text-seashell" />
+        <Side title="What you owe, and what is yours" note={`Liabilities ${formatINR(b.liabilities)} · net worth ${formatINR(b.equity)}`} total={b.liabilities + b.equity} rows={right} tone="bg-ink text-seashell" />
       </div>
       <p className={cn("rounded-2xl px-4 py-3 text-[13px] font-medium", balanced ? "bg-sunken text-ink-2" : "bg-red text-white")}>
         {balanced

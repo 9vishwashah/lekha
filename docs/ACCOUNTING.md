@@ -81,7 +81,7 @@ The expense row is the canonical record of spending. "Paid from a ledger" also w
 | Bill received | creditor + net, GST credit + GST, TDS payable + TDS | cost + before tax |
 | Bill raised | debtor + net, GST payable + GST, TDS receivable + TDS | income + before tax |
 | Expense | wallet − | cost + |
-| Advance | wallet −, advances + (in a party ledger, that party's balance +) | none |
+| Advance | wallet −, that person owes you + (a party ledger already holds it) | none |
 | Advance adjusted with no bill on record | advances − | cost + |
 | Split or shared expense | wallet − all you paid, debtor + their part | cost + your part |
 | Tax paid | wallet −, GST or TDS payable − | none (`other` tax is a cost) |
@@ -89,15 +89,17 @@ The expense row is the canonical record of spending. "Paid from a ledger" also w
 
 **GST and TDS are never profit.** They are the Government's money, held or owed. GST on `expenses.gst_amount` stays in the cost and earns no credit here, so the books agree with the Tax page, which reads bills only.
 
-**One person, one figure.** Debtors and creditors are netted per person across party ledgers, unposted invoices, direct and shared accounts. An advance in a party ledger is already in that party's balance, so it is not counted again under Advances.
+**One person, one figure.** Debtors and creditors are netted per person across party ledgers, unposted invoices, advances, direct and shared accounts. Money paid on someone's behalf is an advance: they owe it back, and it is never a cost. An advance in a party ledger is already in that party's balance, so it is only counted there. Archived ledgers and accounts still count: archiving hides a ledger, it does not settle it. Client Accounts, the client page, Home and Books all read these same figures, so they agree; Books lists each person with what their figure is made of.
 
-**Wallets.** A wallet is a cash book for your own money, kind `cash` or `bank`. Every workspace starts with Cash in Hand and Bank & UPI. Money on a party ledger or an invoice names a wallet with `transactions.wallet_ledger_id`: a pointer on the one entry, not a second entry, so voids, reversals and corrections need no cascade, and Money in and out count it once. The form suggests a wallet from the payment mode and shows it. Cash that named no wallet still moved, so it stays on the sheet as its own line instead of being dropped or guessed, and `classify_entry` can name the wallet later.
+**Wallets.** A wallet is a cash book for your own money, kind `cash` or `bank`. Every workspace starts with Cash in Hand and Bank & UPI. Money on a party ledger or an invoice names a wallet with `transactions.wallet_ledger_id`: a pointer on the one entry, not a second entry, so voids, reversals and corrections need no cascade, and Money in and out count it once. The form suggests a wallet from the payment mode and shows it. Cash that named no wallet still moved. It came from (or went to) your own pocket, so it is shown in net worth as "Paid from your own pocket", never as money owed to anyone. `classify_entry` can name the wallet later, which moves it into Cash or Bank.
 
 **Wallet entries are not guessed.** A plain Money In might be income, capital or a transfer. `transactions.nature` says which. Left empty it is shown as Uncategorised, outside profit, until someone decides.
 
 **A ledger with a client is a party ledger.** Bills in a cash book never reach a balance, which is how a client ledger could read ₹0. New ledgers with a client are always party ledgers. Migration `20261107001800_books.sql` converts only client cash books holding no cash and no opening balance: turning one with real cash in it would flip the sign of its history.
 
-**Accounts other people run** are not your workspace's books. They appear on the person's card and in a note under the sheet, not in its totals.
+**Accounts other people run** are not your workspace's books. They appear on the person's card as "In their accounts", and in a note under the sheet, not in its totals.
+
+**Billed twice.** A bill raised on a ledger and an issued invoice with the same amount within 60 days, or with the invoice number as the bill's reference, are listed in Books as possibly the same job. Both still count until one is voided: only the person who knows the job can say which is real.
 
 ## Clients link both ways
 

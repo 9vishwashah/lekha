@@ -27,7 +27,7 @@ const draft = (ws: string, extra: Record<string, unknown> = {}) => ({
   workspace_id: ws,
   invoice_type: "service",
   invoice_date: "2026-10-24",
-  due_date: "2026-11-07",
+  due_date: "2099-12-31",
   client_name: "Regal Impex",
   items: [{ name: "Website", quantity: "1", rate: "25000" }],
   ...extra,

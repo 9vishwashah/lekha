@@ -5,7 +5,8 @@ import { getWorkspace } from "@/lib/server/context";
 import { getPersonalLedger, isUuid, listContractors, listLedgers, walletsOf } from "@/lib/server/queries";
 import { listInvoices } from "@/lib/server/invoices";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
-import { loadSharedAccountRows, net, peoplePositions } from "@/lib/server/people";
+import { externalNet, loadSharedAccountRows, peoplePositions } from "@/lib/server/people";
+import { loadBooks } from "@/lib/server/books";
 import { describeBalance, type Perspective } from "@/lib/domain/ledger";
 import { expenseEffect } from "@/lib/domain/split";
 import { sum, toPaise } from "@/lib/domain/money";
@@ -47,7 +48,11 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   if (!c) notFound();
   const account = c.linked_user_id ? ((await loadPeople(ctx.db, [c.linked_user_id])).get(c.linked_user_id) ?? null) : null;
   const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, all).byClient.get(id);
-  const overall = net(position);
+  // Your books: every ledger (archived ones too), invoice, advance and account with them, netted.
+  const books = await loadBooks(ctx.db, ctx.workspace.id, sharedRows);
+  const overall = books.positions.get(id) ?? 0n;
+  const addsUp = books.breakdown.get(id) ?? [];
+  const theirs = externalNet(position);
   // Accounts they run that you are in show here too, on the card linking made for them.
   const sharedLedgerIds = new Set(sharedRows.participants.filter((p) => p.contractor_id === id || (c.linked_user_id && p.user_id === c.linked_user_id)).map((p) => p.ledger_id));
   const directLedger = sharedRows.ledgers.find((l) => l.is_direct && l.contractor_id === id && sharedLedgerIds.has(l.id));
@@ -135,7 +140,12 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
         <div className="flex flex-col items-start gap-1 sm:items-end">
           <span className="text-sm font-semibold text-ink-2">{overall === 0n ? "All square" : overall > 0n ? `${c.name.split(" ")[0]} owes you` : `You owe ${c.name.split(" ")[0]}`}</span>
           <Amount value={overall > 0n ? overall : -overall} size="xl" tone={overall > 0n ? "in" : overall < 0n ? "out" : "inherit"} />
-          <span className="text-[13px] text-ink-3">Across ledgers and shared accounts</span>
+          <span className="text-[13px] text-ink-3">Across ledgers, invoices, advances and shared accounts</span>
+          {theirs !== 0n && (
+            <span className="text-[13px] text-ink-3">
+              Plus in their own accounts: {theirs > 0n ? "they owe you" : "you owe"} <Money value={theirs > 0n ? theirs : -theirs} />
+            </span>
+          )}
         </div>
       </header>
 
@@ -155,6 +165,28 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
           </LinkButton>
         )}
       </div>
+
+      {addsUp.length > 1 && (
+        <section aria-label="How this adds up" className="rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70">
+          <h2 className="text-sm font-semibold">How {overall === 0n ? "this evens out" : "this adds up"}</h2>
+          <ul className="mt-2 divide-y divide-line text-[15px]">
+            {addsUp.map((s, i) => (
+              <li key={`${s.href}${i}`}>
+                <Link href={s.href} className="flex min-h-12 items-center justify-between gap-3 py-2 hover:opacity-80">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{s.label}</span>
+                    <span className="block text-[12px] text-ink-3">{s.note}</span>
+                  </span>
+                  <span className="text-right">
+                    <Money value={s.amount > 0n ? s.amount : -s.amount} tone={s.amount > 0n ? "in" : "out"} className="block font-semibold" />
+                    <span className="text-[12px] text-ink-3">{s.amount > 0n ? "they owe you" : "you owe"}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <ConnectCard
         contractor={{ id: c.id, name: c.name }}
@@ -262,7 +294,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
           <SectionTitle>Shared accounts</SectionTitle>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {sharedAccounts.map((l) => {
-              const amount = position?.sources.find((s) => s.ledgerId === l.id)?.amount ?? 0n;
+              const amount = addsUp.find((s) => s.href === `/ledgers/${l.id}`)?.amount ?? position?.sources.find((s) => s.ledgerId === l.id)?.amount ?? 0n;
               return (
                 <li key={l.id}>
                   <WalletCard

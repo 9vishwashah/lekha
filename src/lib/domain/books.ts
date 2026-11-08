@@ -18,14 +18,18 @@ import { expenseEffect, participantBalances, simplifyDebts } from "./split";
  *   Bill received       creditor +net          cost +before tax     GST credit +gst   TDS payable +tds
  *   Bill raised         debtor +net            income +before tax   GST payable +gst  TDS receivable +tds
  *   Expense             cash −                 cost +
- *   Advance             cash −                 advances + (in a party ledger: that party's balance +)
+ *   Advance             cash −                 that person owes you + (a party ledger already has it)
  *   Your share, split   cash − all you paid    debtor + their part  cost + your part
  *   Tax paid            cash −                 GST or TDS payable −
  *   Wallet entry        cash ±                 what it says it was, else uncategorised
  *   Opening balance     cash or debtor ±       capital ±
  *
- * Cash that moved without naming a wallet still moved, so it is kept as its own line rather than
- * dropped. That line is what stops older records from throwing the sheet out.
+ * Cash that moved without naming a wallet came out of (or went into) your own pocket. It is part of
+ * what you put into the business, so it sits with capital, not with what you owe anyone.
+ *
+ * Everyone is one figure: ledgers, invoices, shared accounts and advances with the same person are
+ * netted before they are called a debtor or a creditor. Archived ledgers still count: archiving
+ * hides a ledger, it does not settle it.
  */
 export interface BooksInput {
   ledgers: { id: string; name: string; perspective: string; ledger_type: string; wallet_kind: string | null; contractor_id: string | null; opening_balance: string; status: string }[];
@@ -44,13 +48,14 @@ export interface BooksInput {
     nature: string | null;
     voucher_no?: string;
     description?: string | null;
+    reference_no?: string | null;
   }[];
   tax: { transaction_id: string; taxable_amount: string; gst_amount: string; tds_amount: string }[];
   taxSettlements: { transaction_id: string; tax_type: string }[];
-  invoices: { id: string; contractor_id: string | null; ledger_id: string | null; status: string; invoice_type: string; invoice_date: string; grand_total: string; tax_total: string; amount_received: string; transaction_id: string | null }[];
+  invoices: { id: string; invoice_no?: string | null; contractor_id: string | null; ledger_id: string | null; status: string; invoice_type: string; invoice_date: string; grand_total: string; tax_total: string; amount_received: string; transaction_id: string | null }[];
   payments: { amount: string; status: string; transaction_id: string | null }[];
   expenses: { amount: string; expense_date: string; status: string; transaction_id: string | null; split_group_id: string | null; category: string }[];
-  advances: { ledger_id: string | null; amount: string; status: string; allocations: { kind: string; amount: string; status: string; alloc_date: string; transaction_id?: string | null }[] }[];
+  advances: { id?: string; contractor_id?: string | null; purpose?: string | null; ledger_id: string | null; amount: string; status: string; allocations: { kind: string; amount: string; status: string; alloc_date: string; transaction_id?: string | null }[] }[];
   splitGroups: { total_amount: string; paid_by_contractor_id: string | null; transaction_id: string | null; status: string }[];
   participants: { id: string; ledger_id: string; contractor_id: string | null; position: number }[];
   sharedExpenses: {
@@ -124,6 +129,7 @@ export function computeBooks(input: BooksInput) {
   let tdsPaid = 0n;
   let tdsReceivable = 0n;
   const uncategorisedEntries: BooksInput["txns"] = [];
+  const billsRaised: BooksInput["txns"] = [];
   const notes = { billsInCashBooks: 0, expensesOnPartyLedgers: 0, taxOnPayments: 0, clientCashBooks: 0 };
 
   for (const l of input.ledgers) {
@@ -174,6 +180,7 @@ export function computeBooks(input: BooksInput) {
         tdsPayable += toPaise(d.tds_amount);
       } else {
         pnl("income", "Bills raised", t.txn_date, toPaise(d.taxable_amount));
+        billsRaised.push(t);
         gstOutput += toPaise(d.gst_amount);
         tdsReceivable += toPaise(d.tds_amount);
       }
@@ -196,9 +203,15 @@ export function computeBooks(input: BooksInput) {
 
   // Who owes whom, per person, across every kind of account.
   const people = new Map<string, Paise>();
-  const owe = (key: string, amount: Paise) => people.set(key, (people.get(key) ?? 0n) + amount);
+  const breakdown = new Map<string, BookSource[]>();
+  const owe = (key: string, amount: Paise, source: Omit<BookSource, "amount">) => {
+    if (amount === 0n) return;
+    people.set(key, (people.get(key) ?? 0n) + amount);
+    breakdown.set(key, [...(breakdown.get(key) ?? []), { ...source, amount }]);
+  };
   for (const l of input.ledgers) {
-    if (l.perspective === "party") owe(l.contractor_id ?? `ledger:${l.id}`, partyBalance.get(l.id) ?? 0n);
+    if (l.perspective === "party")
+      owe(l.contractor_id ?? `ledger:${l.id}`, partyBalance.get(l.id) ?? 0n, { label: l.name, note: l.status === "archived" ? "Archived ledger" : "Ledger", href: `/ledgers/${l.id}` });
   }
 
   for (const i of input.invoices) {
@@ -208,7 +221,7 @@ export function computeBooks(input: BooksInput) {
     pnl("income", "Invoices", i.invoice_date, total - taxTotal);
     gstOutput += taxTotal;
     const inParty = i.transaction_id && i.ledger_id && ledgers.get(i.ledger_id)?.perspective === "party";
-    if (!inParty) owe(i.contractor_id ?? `invoice:${i.id}`, total - toPaise(i.amount_received));
+    if (!inParty) owe(i.contractor_id ?? `invoice:${i.id}`, total - toPaise(i.amount_received), { label: `Invoice ${i.invoice_no ?? ""}`.trim(), note: "Invoice", href: `/invoices/${i.id}` });
   }
   for (const p of input.payments) {
     if (p.status === "confirmed" && !p.transaction_id) unassigned += toPaise(p.amount);
@@ -236,7 +249,10 @@ export function computeBooks(input: BooksInput) {
     const onParty = a.ledger_id ? ledgers.get(a.ledger_id)?.perspective === "party" : false;
     if (onParty) continue; // already inside that party's balance
     const live = a.allocations.filter((x) => x.status === "active");
-    advances += toPaise(a.amount) - sum(live.map((x) => toPaise(x.amount)));
+    const left = toPaise(a.amount) - sum(live.map((x) => toPaise(x.amount)));
+    advances += left;
+    // Money given to someone is money they owe you until it is recovered or set against their bill.
+    owe(a.contractor_id ?? `advance:${a.id}`, left, { label: a.purpose ? `Advance · ${a.purpose}` : "Advance", note: "Advance", href: a.id ? `/advances/${a.id}` : "/advances" });
     if (!a.ledger_id) unassigned -= toPaise(a.amount);
     for (const x of live) {
       if (x.kind === "recovery" && !a.ledger_id) unassigned += toPaise(x.amount);
@@ -277,10 +293,10 @@ export function computeBooks(input: BooksInput) {
     for (const d of simplifyDebts(participantBalances(ids, expenses, settlements), ids)) {
       if (d.to === owner.id) {
         const other = ps.find((p) => p.id === d.from)!;
-        owe(other.contractor_id ?? `participant:${other.id}`, d.amount);
+        owe(other.contractor_id ?? `participant:${other.id}`, d.amount, { label: l.name, note: shareNote(l), href: `/ledgers/${l.id}` });
       } else if (d.from === owner.id) {
         const other = ps.find((p) => p.id === d.to)!;
-        owe(other.contractor_id ?? `participant:${other.id}`, -d.amount);
+        owe(other.contractor_id ?? `participant:${other.id}`, -d.amount, { label: l.name, note: shareNote(l), href: `/ledgers/${l.id}` });
       }
     }
   }
@@ -302,9 +318,26 @@ export function computeBooks(input: BooksInput) {
   const tdsDue = tdsPayable - tdsPaid;
 
   const allTime = profitAndLoss(lines);
-  const assets = cash + bank + debtors + advances + gstCredit + tdsReceivable + (unassigned > 0n ? unassigned : 0n);
-  const liabilities = creditors + gstPayable + tdsDue + (unassigned < 0n ? -unassigned : 0n);
-  const equity = capital + introduced + allTime.profit + uncategorised;
+  const assets = cash + bank + debtors + gstCredit + tdsReceivable;
+  const liabilities = creditors + gstPayable + tdsDue;
+  // Paid from outside the wallets: you funded it, so it is yours, like capital.
+  const pocket = -unassigned;
+  const equity = capital + introduced + pocket + allTime.profit + uncategorised;
+
+  // The same job billed twice: a bill raised on a ledger and an invoice for the same amount and
+  // time, or with the invoice number as the bill's reference. Only pointed out, never dropped: the
+  // person who knows the job decides which one stays.
+  const issued = input.invoices.filter((i) => i.status === "issued" && i.invoice_type !== "proforma");
+  const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+  const duplicates = billsRaised.flatMap((t) => {
+    const twin = issued.find(
+      (i) =>
+        i.transaction_id !== t.id &&
+        ((t.reference_no && i.invoice_no && t.reference_no.trim().toLowerCase() === i.invoice_no.trim().toLowerCase()) ||
+          (toPaise(i.grand_total) === toPaise(t.amount) && days(i.invoice_date, t.txn_date) <= 60)),
+    );
+    return twin ? [{ ledgerId: t.ledger_id, ledgerName: ledgers.get(t.ledger_id)?.name ?? "", voucher: t.voucher_no ?? "", invoiceId: twin.id, invoiceNo: twin.invoice_no ?? "", amount: toPaise(t.amount) }] : [];
+  });
 
   return {
     wallets,
@@ -316,7 +349,10 @@ export function computeBooks(input: BooksInput) {
     debtorCount: positive.length,
     creditorCount: negative.length,
     positions: people,
+    breakdown,
     advances,
+    pocket,
+    duplicates,
     gstPayable,
     gstCredit,
     tdsDue,
@@ -336,6 +372,17 @@ export function computeBooks(input: BooksInput) {
 }
 
 export type Books = ReturnType<typeof computeBooks>;
+
+export interface BookSource {
+  label: string;
+  note: string;
+  href: string;
+  amount: Paise; // + they owe you
+}
+
+function shareNote(l: { status: string }) {
+  return l.status === "archived" ? "Archived shared account" : "Shared account";
+}
 
 /** Which wallet a payment mode points to by default. Cash to cash, everything else to the bank. */
 export function walletForMode<T extends { id: string; kind: "cash" | "bank" | null }>(wallets: T[], mode: string): string {

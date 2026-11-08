@@ -4,8 +4,8 @@ import { loadBooks } from "@/lib/server/books";
 import { loadSharedAccountRows } from "@/lib/server/people";
 import { profitAndLoss } from "@/lib/domain/books";
 import { formatDateShort } from "@/lib/domain/dates";
-import { toPaise } from "@/lib/domain/money";
-import { listLedgers } from "@/lib/server/queries";
+import { formatINR, toPaise } from "@/lib/domain/money";
+import { listContractors, listLedgers } from "@/lib/server/queries";
 import { BalanceSheet } from "@/components/app/balance-sheet";
 import { PeriodTabs, resolvePeriod } from "@/components/app/period-tabs";
 import { Amount, Money } from "@/components/ui/amount";
@@ -44,7 +44,15 @@ export default async function BooksPage(props: PageProps<"/books">) {
   const params = (await props.searchParams) as Record<string, string>;
   const period = resolvePeriod(params, ctx.workspace.fy_start_month, "fy");
   const shared = await loadSharedAccountRows(ctx.db);
-  const [books, ledgers] = await Promise.all([loadBooks(ctx.db, ctx.workspace.id, shared), listLedgers(ctx.db, ctx.workspace.id)]);
+  const [books, ledgers, clients] = await Promise.all([loadBooks(ctx.db, ctx.workspace.id, shared), listLedgers(ctx.db, ctx.workspace.id), listContractors(ctx.db, ctx.workspace.id)]);
+  const clientName = new Map(clients.map((c) => [c.id, c.name]));
+  const people = [...books.positions]
+    .filter(([, v]) => v !== 0n)
+    .map(([key, amount]) => {
+      const sources = books.breakdown.get(key) ?? [];
+      return { key, amount, name: clientName.get(key) ?? sources[0]?.label ?? "Someone", href: clientName.has(key) ? `/contractors/${key}` : (sources[0]?.href ?? "/books"), sources };
+    })
+    .sort((a, b) => (a.amount === b.amount ? 0 : a.amount > b.amount ? -1 : 1));
   const pnl = profitAndLoss(books.lines, period.range);
   const plural = (n: number) => (n === 1 ? "1 person" : `${n} people`);
   const ledgerName = new Map(ledgers.map((l) => [l.id, l.name]));
@@ -80,12 +88,52 @@ export default async function BooksPage(props: PageProps<"/books">) {
         </div>
       </section>
 
-      {(notes.length > 0 || entries.length > 0 || books.unassigned !== 0n) && (
+      <section aria-label="Who owes what" className="flex flex-col gap-4">
+        <SectionTitle>Who owes what</SectionTitle>
+        <p className="text-[15px] text-ink-2">One line per person, netted across every ledger, invoice, advance and shared account with them. Archived ledgers count until they are settled.</p>
+        {people.length === 0 ? (
+          <p className="text-ink-2">Everyone is settled.</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
+            {people.map((p) => (
+              <li key={p.key}>
+                <Link href={p.href} className="flex items-center gap-3 px-5 py-3 hover:bg-white">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{p.name}</span>
+                    <span className="block truncate text-[13px] text-ink-3">
+                      {p.sources.map((s) => `${s.note} ${formatINR(s.amount > 0n ? s.amount : -s.amount)}${s.amount < 0n ? " you owe" : ""}`).join(" · ")}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    <Money value={p.amount > 0n ? p.amount : -p.amount} tone={p.amount > 0n ? "in" : "out"} className="block font-semibold" />
+                    <span className="text-[12px] text-ink-3">{p.amount > 0n ? "owes you" : "you owe"}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+            <li className="flex justify-between gap-3 px-5 py-3 text-[15px] font-semibold">
+              <span>Owe you · You owe</span>
+              <span className="num">
+                {formatINR(books.debtors)} · {formatINR(books.creditors)}
+              </span>
+            </li>
+          </ul>
+        )}
+      </section>
+
+      {(notes.length > 0 || entries.length > 0 || books.unassigned !== 0n || books.duplicates.length > 0) && (
         <section aria-label="Needs a look" className="flex flex-col gap-4">
           <SectionTitle>Needs a look</SectionTitle>
+          {books.duplicates.map((d) => (
+            <p key={`${d.ledgerId}${d.voucher}`} className="rounded-2xl bg-mustard/40 p-4 text-[15px]">
+              Possibly billed twice: bill {d.voucher} for {formatINR(d.amount)} on{" "}
+              <Link href={`/ledgers/${d.ledgerId}`} className="font-semibold underline underline-offset-4">{d.ledgerName}</Link> and invoice{" "}
+              <Link href={`/invoices/${d.invoiceId}`} className="font-semibold underline underline-offset-4">{d.invoiceNo}</Link> look like the same job. Both are counted. If they are one job, void the bill on the ledger, or reverse it.
+            </p>
+          ))}
           {books.unassigned !== 0n && (
-            <p className="rounded-2xl bg-sunken p-4 text-[15px] text-ink-2">
-              Some money moved without naming a wallet, so Cash and Bank can&apos;t see it. It still counts, as its own line. Open an entry on a client ledger to say which wallet it went through, and choose a wallet on new entries.
+            <p id="wallets" className="rounded-2xl bg-sunken p-4 text-[15px] text-ink-2">
+              {formatINR(books.pocket > 0n ? books.pocket : -books.pocket)} {books.pocket > 0n ? "was paid" : "was received"} without naming a wallet: older shared expenses, advances and payments. It is shown with what you put in, as {books.pocket > 0n ? "paid from your own pocket" : "received outside your wallets"}. To move it into Cash or Bank, open each entry on a client ledger and say which wallet it went through, and pick a wallet on new entries.
             </p>
           )}
           {notes.map((n) => (
