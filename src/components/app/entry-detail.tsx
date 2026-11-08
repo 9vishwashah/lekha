@@ -10,6 +10,7 @@ import { DateInput } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/bits";
 import { Amount } from "@/components/ui/amount";
 import { classifyEntry, reverseEntry, voidEntry } from "@/app/(app)/actions/ledgers";
+import { voidTransfer } from "@/app/(app)/actions/entries";
 import { KIND_LABEL } from "@/lib/domain/ledger";
 import { toPaise, formatINR } from "@/lib/domain/money";
 import { formatDate, formatDateTime } from "@/lib/domain/dates";
@@ -61,11 +62,11 @@ export function EntryDetail({
 
   if (!txn) return <Sheet open={false} onClose={close} title="">{null}</Sheet>;
 
-  const editable = canEdit && txn.status !== "void" && !reversed && (txn.kind === "regular" || txn.kind === "invoice");
-  const reversible = canEdit && txn.status === "posted" && !reversed && ["regular", "invoice", "tax_settlement"].includes(txn.kind);
+  const editable = canEdit && !txn.transfer_id && txn.status !== "void" && !reversed && (txn.kind === "regular" || txn.kind === "invoice");
+  const reversible = canEdit && !txn.transfer_id && txn.status === "posted" && !reversed && ["regular", "invoice", "tax_settlement"].includes(txn.kind);
   const voidable = canEdit && txn.status !== "void" && !reversed;
   const canTagWallet = canClassify && txn.status === "posted" && txn.is_cash && perspective === "party" && txn.ledger_id === ledgerId;
-  const canTagNature = canClassify && txn.status === "posted" && txn.kind === "regular" && perspective === "cashbook" && txn.ledger_id === ledgerId;
+  const canTagNature = canClassify && !txn.transfer_id && txn.status === "posted" && txn.kind === "regular" && perspective === "cashbook" && txn.ledger_id === ledgerId;
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) =>
     start(async () => {
@@ -208,7 +209,7 @@ export function EntryDetail({
             className="flex flex-col gap-4 rounded-[24px] bg-sunken p-4"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => (step === "void" ? voidEntry(txn.id, ledgerId, reason) : reverseEntry(txn.id, ledgerId, reason, date)));
+              run(() => (step === "void" ? (txn.transfer_id ? voidTransfer(txn.transfer_id, reason) : voidEntry(txn.id, ledgerId, reason)) : reverseEntry(txn.id, ledgerId, reason, date)));
             }}
           >
             <p className="text-[15px]">

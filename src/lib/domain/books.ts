@@ -28,8 +28,8 @@ import { expenseEffect, participantBalances, simplifyDebts } from "./split";
  * what you put into the business, so it sits with capital, not with what you owe anyone.
  *
  * Everyone is one figure: ledgers, invoices, shared accounts and advances with the same person are
- * netted before they are called a debtor or a creditor. Archived ledgers still count: archiving
- * hides a ledger, it does not settle it.
+ * netted before they are called a debtor or a creditor. Archived ledgers (no longer made: ledgers
+ * are deleted now) are left out.
  */
 export interface BooksInput {
   ledgers: { id: string; name: string; perspective: string; ledger_type: string; wallet_kind: string | null; contractor_id: string | null; opening_balance: string; status: string }[];
@@ -67,10 +67,11 @@ export interface BooksInput {
     description: string;
     category: string | null;
     split_group_id: string | null;
+    book_kind?: string | null;
     payers: { participant_id: string; amount_paid: string }[];
     shares: { participant_id: string; share_amount: string }[];
   }[];
-  settlements: { id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string; transaction_id: string | null }[];
+  settlements: { id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string; transaction_id: string | null; no_cash?: boolean }[];
 }
 
 export interface PnlLine {
@@ -102,7 +103,20 @@ export function profitAndLoss(lines: PnlLine[], range: Range = {}) {
   return { income, costs, totalIncome, totalCosts, profit: totalIncome - totalCosts };
 }
 
-export function computeBooks(input: BooksInput) {
+export function computeBooks(everything: BooksInput) {
+  // Archived ledgers are left out entirely, with everything written in them. Records elsewhere that
+  // relied on one (a payment into an archived wallet, say) are then treated as if no ledger was named,
+  // so both sides of every event still move together and the sheet stays even.
+  const live = new Set(everything.ledgers.filter((l) => l.status !== "archived").map((l) => l.id));
+  const inLive = <T extends { ledger_id: string }>(rows: T[]) => rows.filter((r) => live.has(r.ledger_id));
+  const input: BooksInput = {
+    ...everything,
+    ledgers: everything.ledgers.filter((l) => live.has(l.id)),
+    txns: inLive(everything.txns),
+    participants: inLive(everything.participants),
+    sharedExpenses: inLive(everything.sharedExpenses),
+    settlements: inLive(everything.settlements),
+  };
   const ledgers = new Map(input.ledgers.map((l) => [l.id, l]));
   const txns = new Map(input.txns.map((t) => [t.id, t]));
   const tax = new Map(input.tax.map((t) => [t.transaction_id, t]));
@@ -156,7 +170,7 @@ export function computeBooks(input: BooksInput) {
 
     if (t.is_cash) {
       if (ledger.perspective === "cashbook") walletBalance.set(ledger.id, (walletBalance.get(ledger.id) ?? 0n) + signed);
-      else if (t.wallet_ledger_id) walletBalance.set(t.wallet_ledger_id, (walletBalance.get(t.wallet_ledger_id) ?? 0n) + signed);
+      else if (t.wallet_ledger_id && ledgers.has(t.wallet_ledger_id)) walletBalance.set(t.wallet_ledger_id, (walletBalance.get(t.wallet_ledger_id) ?? 0n) + signed);
       else unassigned += signed;
     }
 
@@ -211,7 +225,7 @@ export function computeBooks(input: BooksInput) {
   };
   for (const l of input.ledgers) {
     if (l.perspective === "party")
-      owe(l.contractor_id ?? `ledger:${l.id}`, partyBalance.get(l.id) ?? 0n, { label: l.name, note: l.status === "archived" ? "Archived ledger" : "Ledger", href: `/ledgers/${l.id}` });
+      owe(l.contractor_id ?? `ledger:${l.id}`, partyBalance.get(l.id) ?? 0n, { label: l.name, note: "Ledger", href: `/ledgers/${l.id}` });
   }
 
   for (const i of input.invoices) {
@@ -220,11 +234,11 @@ export function computeBooks(input: BooksInput) {
     const taxTotal = toPaise(i.tax_total);
     pnl("income", "Invoices", i.invoice_date, total - taxTotal);
     gstOutput += taxTotal;
-    const inParty = i.transaction_id && i.ledger_id && ledgers.get(i.ledger_id)?.perspective === "party";
+    const inParty = i.transaction_id && txns.has(i.transaction_id) && i.ledger_id && ledgers.get(i.ledger_id)?.perspective === "party";
     if (!inParty) owe(i.contractor_id ?? `invoice:${i.id}`, total - toPaise(i.amount_received), { label: `Invoice ${i.invoice_no ?? ""}`.trim(), note: "Invoice", href: `/invoices/${i.id}` });
   }
   for (const p of input.payments) {
-    if (p.status === "confirmed" && !p.transaction_id) unassigned += toPaise(p.amount);
+    if (p.status === "confirmed" && (!p.transaction_id || !txns.has(p.transaction_id))) unassigned += toPaise(p.amount);
   }
 
   for (const e of input.expenses) {
@@ -236,11 +250,11 @@ export function computeBooks(input: BooksInput) {
       continue;
     }
     pnl("cost", e.category, e.expense_date, toPaise(e.amount));
-    if (!e.transaction_id && !e.split_group_id) unassigned -= toPaise(e.amount);
+    if (!row && !e.split_group_id) unassigned -= toPaise(e.amount);
   }
 
   for (const g of input.splitGroups) {
-    if (g.status === "active" && !g.paid_by_contractor_id && !g.transaction_id) unassigned -= toPaise(g.total_amount);
+    if (g.status === "active" && !g.paid_by_contractor_id && (!g.transaction_id || !txns.has(g.transaction_id))) unassigned -= toPaise(g.total_amount);
   }
 
   let advances = 0n;
@@ -253,10 +267,11 @@ export function computeBooks(input: BooksInput) {
     advances += left;
     // Money given to someone is money they owe you until it is recovered or set against their bill.
     owe(a.contractor_id ?? `advance:${a.id}`, left, { label: a.purpose ? `Advance · ${a.purpose}` : "Advance", note: "Advance", href: a.id ? `/advances/${a.id}` : "/advances" });
-    if (!a.ledger_id) unassigned -= toPaise(a.amount);
+    const hosted = Boolean(a.ledger_id && ledgers.has(a.ledger_id));
+    if (!hosted) unassigned -= toPaise(a.amount);
     for (const x of live) {
-      if (x.kind === "recovery" && !a.ledger_id) unassigned += toPaise(x.amount);
-      if (x.kind === "adjustment" && !x.transaction_id) pnl("cost", "Advances adjusted against work", x.alloc_date, toPaise(x.amount));
+      if (x.kind === "recovery" && !hosted) unassigned += toPaise(x.amount);
+      if (x.kind === "adjustment" && (!x.transaction_id || !txns.has(x.transaction_id))) pnl("cost", "Advances adjusted against work", x.alloc_date, toPaise(x.amount));
     }
   }
 
@@ -280,13 +295,15 @@ export function computeBooks(input: BooksInput) {
     for (const e of expenses) {
       const fx = expenseEffect(e, owner.id);
       if (e.description === OPENING && e.category === OPENING) capital += fx.effect;
+      else if (e.book_kind === "income") pnl("income", "Bills on clients", e.txn_date, fx.effect); // no money moved
       else if (!e.split_group_id) {
         unassigned -= fx.paid;
         pnl("cost", "Your share of shared expenses", e.txn_date, fx.share);
       }
     }
     for (const s of settlements) {
-      if (s.transaction_id) continue; // the wallet entry carries the cash
+      if (s.no_cash) continue; // one person's debt set against another's
+      if (s.transaction_id && txns.has(s.transaction_id)) continue; // the wallet entry carries the cash
       if (s.from_participant_id === owner.id) unassigned -= toPaise(s.amount);
       if (s.to_participant_id === owner.id) unassigned += toPaise(s.amount);
     }

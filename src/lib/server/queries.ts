@@ -34,7 +34,7 @@ export const LEDGER_COLUMNS =
   "id, workspace_id, contractor_id, name, ledger_type, perspective, reference_no, opening_balance, opening_balance_date, description, notes, status, gst_mode, color, owner_user_id, last_activity_at, created_at, is_direct, wallet_kind";
 
 export const TXN_COLUMNS =
-  "id, ledger_id, seq, voucher_no, txn_date, direction, amount, kind, is_cash, affects_party, description, counterparty, payment_mode, reference_no, notes, status, reversal_of, void_reason, created_by, created_via, updated_by, created_at, updated_at, import_batch_id, wallet_ledger_id, nature";
+  "id, ledger_id, seq, voucher_no, txn_date, direction, amount, kind, is_cash, affects_party, description, counterparty, payment_mode, reference_no, notes, status, reversal_of, void_reason, created_by, created_via, updated_by, created_at, updated_at, import_batch_id, wallet_ledger_id, nature, transfer_id";
 
 const BALANCE_COLUMNS = "ledger_id, seq, txn_date, direction, amount, kind, is_cash, affects_party, status, wallet_ledger_id, nature";
 

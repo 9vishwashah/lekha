@@ -9,6 +9,7 @@ import {
   revokeCollaborator,
   revokeLedgerInvitation,
   setLedgerStatus,
+  deleteLedger,
   updateCollaborator,
   updateLedger,
 } from "@/app/(app)/actions/ledgers";
@@ -17,6 +18,7 @@ import { DateInput } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { Avatar, Badge, Card, SectionTitle } from "@/components/ui/bits";
 import { Segmented } from "@/components/ui/segmented";
+import { Sheet } from "@/components/ui/sheet";
 import { whatsappUrl } from "./share-sheet";
 import { ClientPicker, type ClientOption } from "./client-picker";
 import { AddByUsername } from "./add-by-username";
@@ -318,29 +320,70 @@ export function LedgerSettings({
         </Card>
       </section>
 
-      {!ledger.is_direct && (
-      <section>
-        <SectionTitle className="mb-4">{ledger.status === "archived" ? "Restore" : "Archive"}</SectionTitle>
-        <Card className="flex flex-col items-start gap-3">
-          <p className="text-[15px] text-ink-2">
-            {ledger.status === "archived"
-              ? "This ledger is archived. Restore it to add entries again."
-              : "Archiving hides this ledger from your lists and stops new entries. Nothing is deleted: the full history, share link and exports stay available."}
-          </p>
-          <Button
-            variant={ledger.status === "archived" ? "primary" : "secondary"}
-            disabled={pending}
-            onClick={() => {
-              if (ledger.status === "active" && !confirm(`Archive "${ledger.name}"? You can restore it later.`)) return;
-              run(() => setLedgerStatus(ledger.id, ledger.status === "archived" ? "active" : "archived"));
-            }}
-          >
-            {ledger.status === "archived" ? "Restore ledger" : "Archive ledger"}
-          </Button>
-        </Card>
-      </section>
+      {ledger.status === "archived" && (
+        <section>
+          <SectionTitle className="mb-4">Restore</SectionTitle>
+          <Card className="flex flex-col items-start gap-3">
+            <p className="text-[15px] text-ink-2">This ledger was archived, so it counts in no total. Restore it to count it again, or delete it below.</p>
+            <Button disabled={pending} onClick={() => run(() => setLedgerStatus(ledger.id, "active"))}>
+              Restore ledger
+            </Button>
+          </Card>
+        </section>
       )}
+      <DeleteLedger ledger={ledger} />
     </div>
+  );
+}
+
+/** Deleting is final, so it asks for the name to be typed, and the database checks it again. */
+function DeleteLedger({ ledger }: { ledger: Ledger }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [sure, setSure] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const matches = typed.trim().toLowerCase() === ledger.name.trim().toLowerCase();
+  return (
+    <section>
+      <SectionTitle className="mb-4">Delete</SectionTitle>
+      <Card className="flex flex-col items-start gap-3">
+        <p className="text-[15px] text-ink-2">
+          Deletes this {ledger.ledger_type === "personal" ? "account" : "ledger"} and every entry in it, for good. Share links stop working. Lekha refuses while an invoice, expense,
+          advance or payment elsewhere still depends on it, and says what to void first.
+        </p>
+        <Button variant="danger" onClick={() => setOpen(true)}>
+          Delete {ledger.ledger_type === "personal" ? "account" : "ledger"}
+        </Button>
+      </Card>
+      <Sheet open={open} onClose={() => setOpen(false)} title={`Delete “${ledger.name}”?`} description="This cannot be undone.">
+        <div className="flex flex-col gap-4">
+          <Field label={`Type ${ledger.name} to confirm`}>
+            {(p) => <Input {...p} value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoFocus />}
+          </Field>
+          <Checkbox label="I understand every entry in it is deleted for good" checked={sure} onChange={(e) => setSure(e.target.checked)} />
+          {error && <p className="rounded-2xl bg-[#f6dcda] p-4 font-medium text-out">{error}</p>}
+          <Button
+            variant="danger"
+            size="lg"
+            disabled={pending || !matches || !sure}
+            onClick={() =>
+              start(async () => {
+                setError(null);
+                const res = await deleteLedger(ledger.id, typed);
+                if (!res.ok) return setError(res.error ?? "Could not delete");
+                toast.success(res.message ?? "Deleted");
+                router.push(ledger.is_direct && ledger.contractor_id ? `/contractors/${ledger.contractor_id}` : "/ledgers");
+                router.refresh();
+              })
+            }
+          >
+            {pending ? "Deleting…" : "Delete for good"}
+          </Button>
+        </div>
+      </Sheet>
+    </section>
   );
 }
 

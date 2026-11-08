@@ -48,7 +48,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   if (!c) notFound();
   const account = c.linked_user_id ? ((await loadPeople(ctx.db, [c.linked_user_id])).get(c.linked_user_id) ?? null) : null;
   const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, all).byClient.get(id);
-  // Your books: every ledger (archived ones too), invoice, advance and account with them, netted.
+  // Your books: every ledger, invoice, advance and account with them, netted.
   const books = await loadBooks(ctx.db, ctx.workspace.id, sharedRows);
   const overall = books.positions.get(id) ?? 0n;
   const addsUp = books.breakdown.get(id) ?? [];

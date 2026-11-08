@@ -89,7 +89,7 @@ The expense row is the canonical record of spending. "Paid from a ledger" also w
 
 **GST and TDS are never profit.** They are the Government's money, held or owed. GST on `expenses.gst_amount` stays in the cost and earns no credit here, so the books agree with the Tax page, which reads bills only.
 
-**One person, one figure.** Debtors and creditors are netted per person across party ledgers, unposted invoices, advances, direct and shared accounts. Money paid on someone's behalf is an advance: they owe it back, and it is never a cost. An advance in a party ledger is already in that party's balance, so it is only counted there. Archived ledgers and accounts still count: archiving hides a ledger, it does not settle it. Client Accounts, the client page, Home and Books all read these same figures, so they agree; Books lists each person with what their figure is made of.
+**One person, one figure.** Debtors and creditors are netted per person across party ledgers, unposted invoices, advances, direct and shared accounts. Money paid on someone's behalf is an advance: they owe it back, and it is never a cost. An advance in a party ledger is already in that party's balance, so it is only counted there. Archived ledgers count in no total. Records elsewhere that relied on one are then treated as if no ledger was named, so the sheet stays even. Client Accounts, the client page, Home and Books all read these same figures, so they agree; Books lists each person with what their figure is made of.
 
 **Wallets.** A wallet is a cash book for your own money, kind `cash` or `bank`. Every workspace starts with Cash in Hand and Bank & UPI. Money on a party ledger or an invoice names a wallet with `transactions.wallet_ledger_id`: a pointer on the one entry, not a second entry, so voids, reversals and corrections need no cascade, and Money in and out count it once. The form suggests a wallet from the payment mode and shows it. Cash that named no wallet still moved. It came from (or went to) your own pocket, so it is shown in net worth as "Paid from your own pocket", never as money owed to anyone. `classify_entry` can name the wallet later, which moves it into Cash or Bank.
 
@@ -162,3 +162,25 @@ Shares are computed with largest-remainder rounding (leftover paise go to the la
 - **Public links**: 32 random bytes, base64url. The database stores a SHA-256 hash for lookup and an AES-256-GCM ciphertext (key only on the app server) so the owner can copy the link again. `get_shared_ledger(token)` is the only thing anonymous visitors can execute; it returns no database ids, notes, attachments or workspace details. Revoke, rotate (old link dies instantly) and expiry are supported. Pages poll a version endpoint for live updates; routes are rate-limited, `noindex`, and `no-referrer`.
 - **Invitations**: single-use, expire in 14 days (configurable 1–60), require a signed-in account to accept, and create a ledger-scoped collaborator (or a workspace member for workspace invitations). Collaborators cannot change their own permissions, see other ledgers, expenses, advances or the workspace, or delete history.
 - **Audit**: triggers write `audit_logs` for every insert/update/delete on business tables with actor id and role (`owner`, `member`, `collaborator`, …) and a field-level diff. A trigger blocks updates and deletes on the log itself.
+
+## Deleting a ledger
+
+Ledgers are deleted, not archived. `delete_ledger` needs an owner or admin and the ledger's name typed again, checked in the database. It removes the ledger and every entry in it; the audit log keeps a row for each one removed. It refuses while anything outside still counts on the ledger: an issued invoice posted to it, a confirmed invoice payment, an active expense, split, advance or advance allocation, a posted client payment, client-ledger entries naming it as their wallet, or a share of a split. The refusal says what to void first. Void and cancelled records that only mention the ledger are unlinked and kept. Receipt files attached to it stay in private storage, unreachable. Ledgers archived before this can be restored or deleted.
+
+## Entries
+
+Add something offers four kinds of entry, each its own screen with a live double-entry preview (debits, credits, what happens to your wallets and to profit):
+
+| Screen | Choice | Writes | Profit |
+| --- | --- | --- | --- |
+| Paid | My expense | wallet −, cost (split: only your share; each other share owed back on their direct account) | − your cost |
+| Paid | Paid to a person | wallet −, that person + (owes you more, or you owe less) | none |
+| Received | From someone who owes you | wallet +, that person − (or an invoice payment) | none |
+| Received | Borrowed or an advance | wallet +, that person − (you owe them) | none |
+| Received | Direct income | wallet +, income (`nature = income`) | + |
+| Book entry | Bill a client | they owe you +, income (`shared_expenses.book_kind = income`) | + |
+| Book entry | Someone paid for me | cost of your share, you owe them | − |
+| Book entry | Settle between two people | A owes you less, you owe B less (`settlements.no_cash`, paired by `contra_id`) | none |
+| Transfer | Between wallets | one wallet −, the other + (`transfer_id`, `nature = transfer`) | none |
+
+Paid and Received always name a wallet. Each entry is one database call that writes both sides together; a transfer and a two-person settle can only be voided whole, and a corrected bill stays a bill. `tests/db/universal-accounting.test.ts` runs ten everyday scenarios in a row and checks the sheet balances, with no plug, after every one.

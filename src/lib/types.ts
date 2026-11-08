@@ -103,6 +103,7 @@ export interface Txn {
   ledger_id: string;
   wallet_ledger_id: string | null;
   nature: string | null;
+  transfer_id: string | null;
   seq: number;
   voucher_no: string;
   txn_date: string;

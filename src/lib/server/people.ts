@@ -37,8 +37,8 @@ export async function loadSharedAccountRows(db: Db) {
     fetchAll<ParticipantRow>((f, t) =>
       db.from("ledger_participants").select("id, ledger_id, workspace_id, contractor_id, user_id, position, display_name").order("id").range(f, t),
     ),
-    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; total_amount: string; txn_date: string; description: string; category: string | null; split_group_id: string | null }>((f, t) =>
-      db.from("shared_expenses").select("id, ledger_id, status, total_amount, txn_date, description, category, split_group_id").order("id").range(f, t),
+    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; total_amount: string; txn_date: string; description: string; category: string | null; split_group_id: string | null; book_kind: string | null }>((f, t) =>
+      db.from("shared_expenses").select("id, ledger_id, status, total_amount, txn_date, description, category, split_group_id, book_kind").order("id").range(f, t),
     ),
     fetchAll<{ shared_expense_id: string; participant_id: string; amount_paid: string }>((f, t) =>
       db.from("shared_expense_payers").select("shared_expense_id, participant_id, amount_paid").order("shared_expense_id").range(f, t),
@@ -46,8 +46,8 @@ export async function loadSharedAccountRows(db: Db) {
     fetchAll<{ shared_expense_id: string; participant_id: string; share_amount: string }>((f, t) =>
       db.from("shared_expense_shares").select("shared_expense_id, participant_id, share_amount").order("shared_expense_id").range(f, t),
     ),
-    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string; transaction_id: string | null }>((f, t) =>
-      db.from("settlements").select("id, ledger_id, status, from_participant_id, to_participant_id, amount, transaction_id").order("id").range(f, t),
+    fetchAll<{ id: string; ledger_id: string; status: "posted" | "void"; from_participant_id: string; to_participant_id: string; amount: string; transaction_id: string | null; no_cash: boolean }>((f, t) =>
+      db.from("settlements").select("id, ledger_id, status, from_participant_id, to_participant_id, amount, transaction_id, no_cash").order("id").range(f, t),
     ),
     fetchAll<{ id: string; name: string; status: string; workspace_id: string; is_direct: boolean; contractor_id: string | null }>((f, t) =>
       db.from("ledgers").select("id, name, status, workspace_id, is_direct, contractor_id").eq("ledger_type", "personal").order("id").range(f, t),

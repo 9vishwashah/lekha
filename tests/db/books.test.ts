@@ -391,16 +391,24 @@ describe("books", () => {
     expectBalanced(b);
   });
 
-  it("an archived ledger still counts: archiving hides it, it does not settle it", async () => {
+  it("an archived ledger counts for nothing, and what depended on it still balances", async () => {
     const w = await world("Archived");
     const c = await w.client("Regal");
     const party = await w.ledger({ name: "Regal", ledger_type: "taxation", contractor_id: c });
     await w.post({ ledger_id: party, kind: "invoice", direction: "out", tax: { taxable_amount: "5500", gst_applicable: false, tds_applicable: false } });
-    await rpc(db, OWNER, "public.set_ledger_status($1, 'archived')", [party]);
+    const old = await w.ledger({ name: "Old bank", ledger_type: "basic", wallet_kind: "bank" });
+    await rpc(db, OWNER, "public.create_expense($1::jsonb)", [j({ workspace_id: w.ws, category_id: w.category, expense_date: "2026-10-03", title: "Paid from old bank", amount: "400", ledger_id: old })]);
+    await db.query("update public.ledgers set status = 'archived' where id = any($1)", [[party, old]]);
     const b = await books(w.ws);
-    expect(b.positions.get(c)).toBe(p(5500));
-    expect(b.breakdown.get(c)![0].note).toBe("Archived ledger");
+    expect(b.positions.get(c)).toBeUndefined();
+    expect(b.profit).toBe(-p(400)); // the expense still happened; its wallet is just no longer counted
+    expect(b.pocket).toBe(p(400));
     expectBalanced(b);
+  });
+
+  it("a ledger can no longer be archived", async () => {
+    const w = await world("No archive");
+    await expect(rpc(db, OWNER, "public.set_ledger_status($1, 'archived')", [w.cash])).rejects.toThrow(/cannot be archived/);
   });
 
   it("points out a bill raised and an invoice that look like the same job, without dropping either", async () => {

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { ClientPicker, type ClientOption } from "@/components/app/client-picker";
 import { Avatar } from "@/components/ui/bits";
@@ -28,11 +28,17 @@ export function SplitWith({
   amount,
   initial,
   onChange,
+  fixedPayer = false,
+  onShares,
 }: {
   clients: ClientOption[];
   amount: string;
   initial?: string;
   onChange: (state: { splitting: boolean; theyPaid: boolean }) => void;
+  /** Money out of your own wallet: you paid, so "they paid" is not offered. */
+  fixedPayer?: boolean;
+  /** The worked-out shares, for a live preview. */
+  onShares?: (shares: { you: bigint; people: { name: string; amount: bigint }[] } | null) => void;
 }) {
   const [people, setPeople] = useState<string[]>(initial ? [initial] : []);
   const [picking, setPicking] = useState(false);
@@ -65,6 +71,12 @@ export function SplitWith({
     // sharing is derived from people and includeMe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [total, method, inputs, people, includeMe]);
+
+  useEffect(() => {
+    onShares?.(shares ? { you: shares.get(ME) ?? 0n, people: people.map((id) => ({ name: nameOf(id), amount: shares.get(id) ?? 0n })) } : null);
+    // nameOf only reads the client list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shares, people, onShares]);
 
   const update = (next: string[]) => {
     setPeople(next);
@@ -147,7 +159,7 @@ export function SplitWith({
 
       {people.length > 0 && (
         <>
-          {solo ? (
+          {solo && !fixedPayer ? (
             <Segmented
               label="Who paid"
               value={payer}
@@ -159,7 +171,7 @@ export function SplitWith({
             />
           ) : (
             <p className="text-[13px] text-ink-2">
-              You paid. If someone else paid for a group, they are owed rather than you, so use a shared account for that.
+              {fixedPayer ? "You paid from your wallet; each share is owed back to you." : "You paid. If someone else paid for a group, they are owed rather than you, so use a shared account for that."}
             </p>
           )}
           <Segmented label="How to split" value={method} onChange={setMethod} options={METHODS} />

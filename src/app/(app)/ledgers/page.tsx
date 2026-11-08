@@ -85,7 +85,7 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
           active={showArchived ? "archived" : "active"}
           items={[
             { key: "active", href: "/ledgers", label: "Active" },
-            { key: "archived", href: "/ledgers?status=archived", label: "Archived" },
+            { key: "archived", href: "/ledgers?status=archived", label: "Archived · not counted" },
           ]}
         />
       </div>
@@ -97,7 +97,7 @@ export default async function LedgersPage(props: PageProps<"/ledgers">) {
             q
               ? "Try part of the contractor’s name, or clear the search."
               : showArchived
-                ? "Archived ledgers keep their full history and can be restored at any time."
+                ? "Archived ledgers count in no total. Open one to restore it or delete it."
                 : "Create a basic ledger for day-to-day money in and out, a taxation ledger for GST and TDS bills, or a shared account to split costs."
           }
           action={!q && !showArchived && ctx.canWrite ? <LinkButton href="/ledgers/new">Create a ledger</LinkButton> : undefined}

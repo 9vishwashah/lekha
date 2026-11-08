@@ -368,6 +368,7 @@ const clientPaymentSchema = z.object({
   txn_date: isoDate,
   payment_mode: mode,
   reference_no: optionalText(80),
+  notes: optionalText(2000),
   ledger_id: optionalId,
   idempotency_key: z.string().min(8).max(120),
 });

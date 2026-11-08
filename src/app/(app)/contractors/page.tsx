@@ -16,8 +16,8 @@ export const metadata = { title: "Client Accounts" };
 
 const FILTERS = [
   { key: "all", label: "Everyone" },
-  { key: "owes", label: "Owe you" },
-  { key: "owe", label: "You owe" },
+  { key: "owes", label: "Owe you · debtors" },
+  { key: "owe", label: "You owe · creditors" },
   { key: "business", label: "Clients" },
   { key: "personal", label: "Friends & family" },
   { key: "inactive", label: "Inactive" },
@@ -27,7 +27,8 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
   const ctx = await getWorkspace();
   const params = (await props.searchParams) as Record<string, string>;
   // Home's "People owe you" and "You owe people" open these lists. Older links used ?sort=.
-  const wanted = params.show ?? params.sort;
+  const alias: Record<string, string> = { debtors: "owes", creditors: "owe" };
+  const wanted = alias[params.show ?? ""] ?? params.show ?? params.sort;
   const show = FILTERS.some((f) => f.key === wanted) ? wanted : "all";
   const q = (params.q ?? "").trim().toLowerCase();
   const [contractors, balances, advances, sharedRows, invoices] = await Promise.all([

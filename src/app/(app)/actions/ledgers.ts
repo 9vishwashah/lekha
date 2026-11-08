@@ -101,6 +101,19 @@ export async function setLedgerStatus(ledgerId: string, status: "active" | "arch
   return { ok: true, message: status === "archived" ? "Ledger archived" : "Ledger restored" };
 }
 
+/** Deletes a ledger for good. The database checks the typed name again and refuses while anything depends on it. */
+export async function deleteLedger(ledgerId: string, confirmName: string): Promise<ActionResult> {
+  const db = await userDb();
+  const { data, error } = await db.rpc("delete_ledger", { p_ledger: uuid.parse(ledgerId), p_confirm: confirmName });
+  if (error) return fail(error);
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/books");
+  revalidatePath("/contractors", "layout");
+  const res = data as { name: string; entries: number };
+  return { ok: true, message: `Deleted ${res.name} and ${res.entries} ${res.entries === 1 ? "entry" : "entries"}` };
+}
+
 export async function addParticipant(ledgerId: string, clientId: string): Promise<ActionResult> {
   const parsed = uuid.safeParse(clientId);
   if (!parsed.success) return { ok: false, error: "Choose someone from your client accounts" };

@@ -22,7 +22,7 @@ export function ClientMoneyButtons({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <LinkButton href={`/expenses/new?with=${client.id}`}>
+      <LinkButton href={`/entries/new?tab=paid&sub=expense&with=${client.id}`}>
         <Plus className="size-4" /> Add expense
       </LinkButton>
       <Button variant="secondary" onClick={() => setOpen(true)}>

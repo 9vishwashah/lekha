@@ -3,20 +3,7 @@ import { IntentLink } from "@/components/app/intent-link";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { BookOpenCheck, HandCoins,
-  ArrowLeftRight,
-  BookOpen,
-  ChartColumn,
-  FileText,
-  Home,
-  Plus,
-  Receipt,
-  Settings,
-  Share2,
-  UsersRound,
-  Wallet,
-  Ellipsis,
-} from "lucide-react";
+import { BookOpenCheck, ArrowLeftRight, BookOpen, ChartColumn, FileText, Home, Plus, Receipt, Settings, Share2, UsersRound, Wallet, Ellipsis, ArrowUpRight, ArrowDownLeft, Repeat } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sheet } from "@/components/ui/sheet";
 
@@ -33,10 +20,12 @@ const PRIMARY = [
 ];
 
 const QUICK_ADD = [
-  { href: "/ledgers?add=entry", label: "Ledger entry", hint: "Money in or out of a ledger", icon: ArrowLeftRight },
+  { href: "/entries/new?tab=paid", label: "Paid", hint: "Your expense, a split, or money to someone", icon: ArrowUpRight },
+  { href: "/entries/new?tab=received", label: "Received", hint: "From someone who owes you, borrowed, or income", icon: ArrowDownLeft },
+  { href: "/entries/new?tab=book", label: "Book entry", hint: "A bill, or someone paid for you. No money moves", icon: Receipt },
+  { href: "/entries/new?tab=transfer", label: "Transfer", hint: "Between cash and bank", icon: Repeat },
   { href: "/invoices/new", label: "Invoice", hint: "Bill a client and share it on WhatsApp", icon: FileText },
-  { href: "/expenses/new", label: "Expense", hint: "Yours, or split with anyone", icon: Receipt },
-  { href: "/contractors/payment", label: "Payment", hint: "Money from or to someone", icon: HandCoins },
+  { href: "/ledgers?add=entry", label: "Ledger entry", hint: "Straight into one ledger", icon: ArrowLeftRight },
   { href: "/advances/new", label: "Advance", hint: "Money given ahead of work", icon: Wallet },
   { href: "/ledgers/new?type=personal", label: "Shared account", hint: "For a group: a trip, flatmates", icon: UsersRound },
 ];
