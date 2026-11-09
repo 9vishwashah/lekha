@@ -184,3 +184,23 @@ Add something offers four kinds of entry, each its own screen with a live double
 | Transfer | Between wallets | one wallet −, the other + (`transfer_id`, `nature = transfer`) | none |
 
 Paid and Received always name a wallet. Each entry is one database call that writes both sides together; a transfer and a two-person settle can only be voided whole, and a corrected bill stays a bill. `tests/db/universal-accounting.test.ts` runs ten everyday scenarios in a row and checks the sheet balances, with no plug, after every one.
+
+## Accounting heads (as in Tally)
+
+Every figure falls under a standard head: Bank and Cash (wallets), Sundry Debtors and Creditors (people, netted per person), Duties & Taxes (GST, TDS), Capital, and income and expense, which are **Direct** (the trade itself: sales, billing, labour, material) or **Indirect** (everything else: office, rent, interest).
+
+    Gross profit = direct income − direct expenses
+    Net profit   = gross profit + indirect income − indirect expenses
+
+| Where it comes from | Head |
+| --- | --- |
+| Invoices, bills raised, bills on clients, wallet entries marked Direct income | Direct income |
+| Wallet entries marked Indirect income | Indirect income |
+| Bills received, wallet entries marked Direct expense, advances adjusted against work, expense categories set to Direct | Direct expenses |
+| Expense categories set to Indirect, wallet entries marked Indirect expense, your share of shared expenses, other tax payments | Indirect expenses |
+
+Expense categories carry their head (`expense_categories.head`). Materials, Labour, Wages, Purchases and Freight start as Direct; every other category starts as Indirect; Books lets you change any of them.
+
+A cash or bank ledger can set where its plain money in and out usually go (`default_in_nature`, `default_out_nature`). An entry's own head wins; a reversal keeps the head of what it reverses. No ledger gets one automatically: a deposit into Cash in Hand may be capital or a transfer, not income.
+
+A bill attached to a wallet entry counts only when the entry's amount is the bill's figure after TDS (the money that moved): then only the amount before tax is income or cost, and GST and TDS go to Duties & Taxes, as on the Tax page. Otherwise the amount counts as entered and Books flags the entry.

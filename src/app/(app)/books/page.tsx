@@ -6,6 +6,8 @@ import { profitAndLoss } from "@/lib/domain/books";
 import { formatDateShort } from "@/lib/domain/dates";
 import { formatINR, toPaise } from "@/lib/domain/money";
 import { listContractors, listLedgers } from "@/lib/server/queries";
+import { CategoryHeads } from "./heads";
+import { LedgerMeaningForm } from "@/components/app/ledger-meaning";
 import { BalanceSheet } from "@/components/app/balance-sheet";
 import { PeriodTabs, resolvePeriod } from "@/components/app/period-tabs";
 import { Amount, Money } from "@/components/ui/amount";
@@ -45,6 +47,8 @@ export default async function BooksPage(props: PageProps<"/books">) {
   const period = resolvePeriod(params, ctx.workspace.fy_start_month, "fy");
   const shared = await loadSharedAccountRows(ctx.db);
   const [books, ledgers, clients] = await Promise.all([loadBooks(ctx.db, ctx.workspace.id, shared), listLedgers(ctx.db, ctx.workspace.id), listContractors(ctx.db, ctx.workspace.id)]);
+  const { data: cats } = await ctx.db.from("expense_categories").select("id, name, head").eq("workspace_id", ctx.workspace.id).order("name");
+  const categories = (cats ?? []) as { id: string; name: string; head: "direct" | "indirect" }[];
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
   const people = [...books.positions]
     .filter(([, v]) => v !== 0n)
@@ -57,6 +61,12 @@ export default async function BooksPage(props: PageProps<"/books">) {
   const plural = (n: number) => (n === 1 ? "1 person" : `${n} people`);
   const ledgerName = new Map(ledgers.map((l) => [l.id, l.name]));
   const entries = [...books.uncategorisedEntries].sort((a, b) => (a.txn_date < b.txn_date ? 1 : -1));
+  // One "what does this ledger's money mean" bar per ledger that has unexplained entries.
+  const counts = new Map<string, number>();
+  for (const t of entries) counts.set(t.ledger_id, (counts.get(t.ledger_id) ?? 0) + 1);
+  const byLedger = ctx.canWrite
+    ? [...counts].map(([id, count]) => ({ ledger: ledgers.find((l) => l.id === id)!, count })).filter((x) => x.ledger).sort((a, b) => b.count - a.count)
+    : [];
   const notes = [
     books.notes.billsInCashBooks > 0 && `${books.notes.billsInCashBooks} bill${books.notes.billsInCashBooks === 1 ? " sits" : "s sit"} in a cash book, so ${books.notes.billsInCashBooks === 1 ? "it isn't" : "they aren't"} counted here. Bills belong in a ledger with a client.`,
     books.notes.expensesOnPartyLedgers > 0 && `${books.notes.expensesOnPartyLedgers} older expense${books.notes.expensesOnPartyLedgers === 1 ? " was" : "s were"} paid through a party ledger. That reads as money that party owes you, so ${books.notes.expensesOnPartyLedgers === 1 ? "it stays" : "they stay"} there and out of costs.`,
@@ -67,7 +77,7 @@ export default async function BooksPage(props: PageProps<"/books">) {
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title="Books" kicker={ctx.workspace.name}>
-        <p className="mt-3 max-w-2xl text-ink-2">Worked out from everything you record. Income counts when you invoice, costs when they are incurred, and GST and TDS are never profit.</p>
+        <p className="mt-3 max-w-2xl text-ink-2">Worked out from everything you record, laid out the way Tally does: direct income and expenses give gross profit, indirect ones give net profit. Income counts when you invoice, costs when they are incurred, and GST and TDS are never profit.</p>
       </PageHeader>
 
       <section aria-label="Balance sheet" className="flex flex-col gap-3">
@@ -79,11 +89,17 @@ export default async function BooksPage(props: PageProps<"/books">) {
         <SectionTitle>Profit and loss</SectionTitle>
         <PeriodTabs basePath="/books" active={period.key} from={params.from} to={params.to} />
         <div className="grid gap-6 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 sm:p-7 lg:grid-cols-2">
-          <Lines title="Income" lines={pnl.income} total={pnl.totalIncome} />
-          <Lines title="Costs" lines={pnl.costs} total={pnl.totalCosts} />
+          <Lines title="Direct income" lines={pnl.directIncome} total={pnl.directIncome.reduce((t, l) => t + l.amount, 0n)} />
+          <Lines title="Direct expenses" lines={pnl.directCosts} total={pnl.directCosts.reduce((t, l) => t + l.amount, 0n)} />
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-sunken px-4 py-3 font-semibold lg:col-span-2">
+            <span>{pnl.grossProfit < 0n ? "Gross loss" : "Gross profit"}</span>
+            <Money value={pnl.grossProfit < 0n ? -pnl.grossProfit : pnl.grossProfit} />
+          </div>
+          <Lines title="Indirect income" lines={pnl.indirectIncome} total={pnl.indirectIncome.reduce((t, l) => t + l.amount, 0n)} />
+          <Lines title="Indirect expenses" lines={pnl.indirectCosts} total={pnl.indirectCosts.reduce((t, l) => t + l.amount, 0n)} />
         </div>
         <div className="rounded-[var(--radius-card)] bg-mustard p-5 text-ink sm:p-7">
-          <div className="text-sm font-semibold">{pnl.profit < 0n ? "Loss" : "Profit"} · {period.label}</div>
+          <div className="text-sm font-semibold">{pnl.profit < 0n ? "Net loss" : "Net profit"} · {period.label}</div>
           <Amount value={pnl.profit < 0n ? -pnl.profit : pnl.profit} size="lg" className="mt-3 block truncate text-[2.2rem] sm:text-[3.2rem]" />
         </div>
       </section>
@@ -121,7 +137,15 @@ export default async function BooksPage(props: PageProps<"/books">) {
         )}
       </section>
 
-      {(notes.length > 0 || entries.length > 0 || books.unassigned !== 0n || books.duplicates.length > 0) && (
+      {ctx.canWrite && categories.length > 0 && (
+        <section aria-label="Expense heads" className="flex flex-col gap-3">
+          <SectionTitle>Expense heads</SectionTitle>
+          <p className="text-[15px] text-ink-2">Direct expenses are the cost of the work itself, like labour and material, and count in gross profit. Indirect ones, like office and travel, count after it.</p>
+          <CategoryHeads categories={categories} />
+        </section>
+      )}
+
+      {(notes.length > 0 || entries.length > 0 || books.unassigned !== 0n || books.duplicates.length > 0 || books.taxMismatches.length > 0) && (
         <section aria-label="Needs a look" className="flex flex-col gap-4">
           <SectionTitle>Needs a look</SectionTitle>
           {books.duplicates.map((d) => (
@@ -138,6 +162,14 @@ export default async function BooksPage(props: PageProps<"/books">) {
           )}
           {notes.map((n) => (
             <p key={n} className="rounded-2xl bg-sunken p-4 text-[15px] text-ink-2">{n}</p>
+          ))}
+          {books.taxMismatches.map((t) => (
+            <p key={t.id} className="rounded-2xl bg-mustard/40 p-4 text-[15px]">
+              <Link href={`/ledgers/${t.ledger_id}`} className="font-semibold underline underline-offset-4">{t.voucher_no}</Link> on {ledgerName.get(t.ledger_id)} has a bill attached, but its amount ({formatINR(toPaise(t.amount))}) is not the bill&apos;s figure after TDS. Lekha counts the amount as entered and leaves GST and TDS out. If the money received was the after-TDS figure, edit the amount to match and the GST and TDS will count.
+            </p>
+          ))}
+          {byLedger.map(({ ledger, count }) => (
+            <LedgerMeaningForm key={ledger.id} ledger={ledger} count={count} />
           ))}
           {entries.length > 0 && (
             <>

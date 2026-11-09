@@ -225,7 +225,7 @@ export function UniversalComposer({
             await recordClientPayment({ ...base, contractor_id: person, kind: sub === "person" ? "paid" : "received", they_owe: false, txn_date: date, ledger_id: wallet, notes: title }),
           );
         case "income":
-          return done(await postEntry({ ...base, ledger_id: wallet, kind: "regular", direction: "in", txn_date: date, description: title || "Income", counterparty: nameOf(person) || undefined, nature: "income", status: "posted" }));
+          return done(await postEntry({ ...base, ledger_id: wallet, kind: "regular", direction: "in", txn_date: date, description: title || "Income", counterparty: nameOf(person) || undefined, nature: "direct_income", status: "posted" }));
         case "bill":
           if (!person) return setError("Choose the client");
           return done(await recordClientBill({ ...base, contractor_id: person, txn_date: date, description: title || undefined }));

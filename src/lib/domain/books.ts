@@ -32,7 +32,18 @@ import { expenseEffect, participantBalances, simplifyDebts } from "./split";
  * are deleted now) are left out.
  */
 export interface BooksInput {
-  ledgers: { id: string; name: string; perspective: string; ledger_type: string; wallet_kind: string | null; contractor_id: string | null; opening_balance: string; status: string }[];
+  ledgers: {
+    id: string;
+    name: string;
+    perspective: string;
+    ledger_type: string;
+    wallet_kind: string | null;
+    contractor_id: string | null;
+    opening_balance: string;
+    status: string;
+    default_in_nature?: string | null;
+    default_out_nature?: string | null;
+  }[];
   txns: {
     id: string;
     ledger_id: string;
@@ -50,11 +61,11 @@ export interface BooksInput {
     description?: string | null;
     reference_no?: string | null;
   }[];
-  tax: { transaction_id: string; taxable_amount: string; gst_amount: string; tds_amount: string }[];
+  tax: { transaction_id: string; taxable_amount: string; gst_amount: string; tds_amount: string; net_amount?: string }[];
   taxSettlements: { transaction_id: string; tax_type: string }[];
   invoices: { id: string; invoice_no?: string | null; contractor_id: string | null; ledger_id: string | null; status: string; invoice_type: string; invoice_date: string; grand_total: string; tax_total: string; amount_received: string; transaction_id: string | null }[];
   payments: { amount: string; status: string; transaction_id: string | null }[];
-  expenses: { amount: string; expense_date: string; status: string; transaction_id: string | null; split_group_id: string | null; category: string }[];
+  expenses: { amount: string; expense_date: string; status: string; transaction_id: string | null; split_group_id: string | null; category: string; head?: string }[];
   advances: { id?: string; contractor_id?: string | null; purpose?: string | null; ledger_id: string | null; amount: string; status: string; allocations: { kind: string; amount: string; status: string; alloc_date: string; transaction_id?: string | null }[] }[];
   splitGroups: { total_amount: string; paid_by_contractor_id: string | null; transaction_id: string | null; status: string }[];
   participants: { id: string; ledger_id: string; contractor_id: string | null; position: number }[];
@@ -79,6 +90,7 @@ export interface PnlLine {
   label: string;
   date: string;
   amount: Paise; // negative on a reversal
+  head: "direct" | "indirect"; // Tally: direct is the trade itself, indirect everything else
 }
 
 export interface Range {
@@ -88,19 +100,39 @@ export interface Range {
 
 export const OPENING = "Opening balance";
 
-/** Lines added up per label, income first, largest first. */
+/**
+ * Profit and loss as Tally lays it out, for any period:
+ *   Gross profit = direct income − direct expenses        (the trade itself)
+ *   Net profit   = gross profit + indirect income − indirect expenses
+ * Each section lists its lines, largest first.
+ */
 export function profitAndLoss(lines: PnlLine[], range: Range = {}) {
   const within = lines.filter((l) => (!range.from || l.date >= range.from) && (!range.to || l.date <= range.to));
-  const group = (g: PnlLine["group"]) => {
+  const section = (group: PnlLine["group"], head?: PnlLine["head"]) => {
     const totals = new Map<string, Paise>();
-    for (const l of within) if (l.group === g) totals.set(l.label, (totals.get(l.label) ?? 0n) + l.amount);
-    return [...totals].filter(([, v]) => v !== 0n).sort((a, b) => (a[1] === b[1] ? 0 : a[1] > b[1] ? -1 : 1)).map(([label, amount]) => ({ label, amount }));
+    for (const l of within) if (l.group === group && (!head || l.head === head)) totals.set(l.label, (totals.get(l.label) ?? 0n) + l.amount);
+    return [...totals].filter(([, v]) => v !== 0n).sort((x, y) => (x[1] === y[1] ? 0 : x[1] > y[1] ? -1 : 1)).map(([label, amount]) => ({ label, amount }));
   };
-  const income = group("income");
-  const costs = group("cost");
-  const totalIncome = sum(income.map((l) => l.amount));
-  const totalCosts = sum(costs.map((l) => l.amount));
-  return { income, costs, totalIncome, totalCosts, profit: totalIncome - totalCosts };
+  const total = (rows: { amount: Paise }[]) => sum(rows.map((r) => r.amount));
+  const directIncome = section("income", "direct");
+  const directCosts = section("cost", "direct");
+  const indirectIncome = section("income", "indirect");
+  const indirectCosts = section("cost", "indirect");
+  const income = section("income");
+  const costs = section("cost");
+  const grossProfit = total(directIncome) - total(directCosts);
+  return {
+    directIncome,
+    directCosts,
+    indirectIncome,
+    indirectCosts,
+    grossProfit,
+    income,
+    costs,
+    totalIncome: total(income),
+    totalCosts: total(costs),
+    profit: grossProfit + total(indirectIncome) - total(indirectCosts),
+  };
 }
 
 export function computeBooks(everything: BooksInput) {
@@ -126,8 +158,8 @@ export function computeBooks(everything: BooksInput) {
   const linked = new Set([...input.payments.map((p) => p.transaction_id), ...input.settlements.map((s) => s.transaction_id)].filter(Boolean) as string[]);
 
   const lines: PnlLine[] = [];
-  const pnl = (group: PnlLine["group"], label: string, date: string, amount: Paise) => {
-    if (amount !== 0n) lines.push({ group, label, date, amount });
+  const pnl = (group: PnlLine["group"], label: string, date: string, amount: Paise, head: PnlLine["head"] = "indirect") => {
+    if (amount !== 0n) lines.push({ group, label, date, amount, head });
   };
 
   const walletBalance = new Map<string, Paise>();
@@ -145,6 +177,7 @@ export function computeBooks(everything: BooksInput) {
   const uncategorisedEntries: BooksInput["txns"] = [];
   const billsRaised: BooksInput["txns"] = [];
   const notes = { billsInCashBooks: 0, expensesOnPartyLedgers: 0, taxOnPayments: 0, clientCashBooks: 0 };
+  const taxMismatches: BooksInput["txns"] = [];
 
   for (const l of input.ledgers) {
     if (l.perspective === "cashbook") {
@@ -189,11 +222,11 @@ export function computeBooks(everything: BooksInput) {
       }
       const d = tax.get(t.id)!;
       if (t.direction === "in") {
-        pnl("cost", "Bills received", t.txn_date, toPaise(d.taxable_amount));
+        pnl("cost", "Bills received", t.txn_date, toPaise(d.taxable_amount), "direct");
         gstInput += toPaise(d.gst_amount);
         tdsPayable += toPaise(d.tds_amount);
       } else {
-        pnl("income", "Bills raised", t.txn_date, toPaise(d.taxable_amount));
+        pnl("income", "Bills raised", t.txn_date, toPaise(d.taxable_amount), "direct");
         billsRaised.push(t);
         gstOutput += toPaise(d.gst_amount);
         tdsReceivable += toPaise(d.tds_amount);
@@ -201,16 +234,42 @@ export function computeBooks(everything: BooksInput) {
       continue;
     }
 
-    if (kind === "regular" && t.kind === "regular" && tax.has(t.id)) notes.taxOnPayments += 1;
-
     // A wallet entry that is not the money side of an invoice, expense, advance or settlement.
-    if (kind === "regular" && ledger.perspective === "cashbook" && !linked.has(t.id) && !(t.reversal_of && linked.has(t.reversal_of))) {
-      if (t.nature === "income") pnl("income", "Other income", t.txn_date, signed);
-      else if (t.nature === "expense") pnl("cost", "Other expenses", t.txn_date, -signed);
-      else if (t.nature === "capital" || t.nature === "drawings") introduced += signed;
+    const free = kind === "regular" && ledger.perspective === "cashbook" && !linked.has(t.id) && !(t.reversal_of && linked.has(t.reversal_of));
+    if (kind === "regular" && !free && !t.reversal_of && tax.has(t.id)) notes.taxOnPayments += 1;
+    if (free) {
+      // Its own meaning, else what its ledger says money in or out usually means. A reversal keeps
+      // the meaning of what it reverses, so it is judged by that entry's direction.
+      const direction = original?.direction ?? t.direction;
+      const meaning = t.nature ?? (direction === "in" ? ledger.default_in_nature : ledger.default_out_nature) ?? null;
+      const isIncome = meaning === "income" || meaning === "direct_income";
+      const isCost = meaning === "expense" || meaning === "direct_expense";
+      const label = meaning === "direct_income" ? "Direct income" : meaning === "income" ? "Indirect income" : meaning === "direct_expense" ? "Direct expenses" : "Indirect expenses";
+      const head = meaning === "direct_income" || meaning === "direct_expense" ? "direct" : "indirect";
+      // With a bill attached, only the amount before tax is income or cost; GST and TDS go to the
+      // Government's lines. That holds only when the entry's amount is the bill's amount after TDS,
+      // the money that actually moved. Otherwise the amount stands and the entry is flagged.
+      const d = tax.get(t.reversal_of ?? t.id);
+      const matches = Boolean(d && d.net_amount !== undefined && toPaise(d.net_amount) === amount);
+      if (d && !matches && !t.reversal_of && !reversed.has(t.id)) taxMismatches.push(t);
+      if (isIncome) {
+        if (matches) {
+          const sign = t.direction === "in" ? 1n : -1n;
+          pnl("income", label, t.txn_date, sign * toPaise(d!.taxable_amount), head);
+          gstOutput += sign * toPaise(d!.gst_amount);
+          tdsReceivable += sign * toPaise(d!.tds_amount);
+        } else pnl("income", label, t.txn_date, signed, head);
+      } else if (isCost) {
+        if (matches) {
+          const sign = t.direction === "out" ? 1n : -1n;
+          pnl("cost", label, t.txn_date, sign * toPaise(d!.taxable_amount), head);
+          gstInput += sign * toPaise(d!.gst_amount);
+          tdsPayable += sign * toPaise(d!.tds_amount);
+        } else pnl("cost", label, t.txn_date, -signed, head);
+      } else if (meaning === "capital" || meaning === "drawings") introduced += signed;
       else {
         uncategorised += signed;
-        if (t.nature !== "transfer" && !t.reversal_of && !reversed.has(t.id)) uncategorisedEntries.push(t);
+        if (meaning !== "transfer" && !t.reversal_of && !reversed.has(t.id)) uncategorisedEntries.push(t);
       }
     }
   }
@@ -232,7 +291,7 @@ export function computeBooks(everything: BooksInput) {
     if (i.status !== "issued" || i.invoice_type === "proforma") continue;
     const total = toPaise(i.grand_total);
     const taxTotal = toPaise(i.tax_total);
-    pnl("income", "Invoices", i.invoice_date, total - taxTotal);
+    pnl("income", "Sales (invoices)", i.invoice_date, total - taxTotal, "direct");
     gstOutput += taxTotal;
     const inParty = i.transaction_id && txns.has(i.transaction_id) && i.ledger_id && ledgers.get(i.ledger_id)?.perspective === "party";
     if (!inParty) owe(i.contractor_id ?? `invoice:${i.id}`, total - toPaise(i.amount_received), { label: `Invoice ${i.invoice_no ?? ""}`.trim(), note: "Invoice", href: `/invoices/${i.id}` });
@@ -249,7 +308,7 @@ export function computeBooks(everything: BooksInput) {
       notes.expensesOnPartyLedgers += 1;
       continue;
     }
-    pnl("cost", e.category, e.expense_date, toPaise(e.amount));
+    pnl("cost", e.category, e.expense_date, toPaise(e.amount), e.head === "direct" ? "direct" : "indirect");
     if (!row && !e.split_group_id) unassigned -= toPaise(e.amount);
   }
 
@@ -271,7 +330,7 @@ export function computeBooks(everything: BooksInput) {
     if (!hosted) unassigned -= toPaise(a.amount);
     for (const x of live) {
       if (x.kind === "recovery" && !hosted) unassigned += toPaise(x.amount);
-      if (x.kind === "adjustment" && (!x.transaction_id || !txns.has(x.transaction_id))) pnl("cost", "Advances adjusted against work", x.alloc_date, toPaise(x.amount));
+      if (x.kind === "adjustment" && (!x.transaction_id || !txns.has(x.transaction_id))) pnl("cost", "Advances adjusted against work", x.alloc_date, toPaise(x.amount), "direct");
     }
   }
 
@@ -295,7 +354,7 @@ export function computeBooks(everything: BooksInput) {
     for (const e of expenses) {
       const fx = expenseEffect(e, owner.id);
       if (e.description === OPENING && e.category === OPENING) capital += fx.effect;
-      else if (e.book_kind === "income") pnl("income", "Bills on clients", e.txn_date, fx.effect); // no money moved
+      else if (e.book_kind === "income") pnl("income", "Bills on clients", e.txn_date, fx.effect, "direct"); // no money moved
       else if (!e.split_group_id) {
         unassigned -= fx.paid;
         pnl("cost", "Your share of shared expenses", e.txn_date, fx.share);
@@ -370,6 +429,7 @@ export function computeBooks(everything: BooksInput) {
     advances,
     pocket,
     duplicates,
+    taxMismatches,
     gstPayable,
     gstCredit,
     tdsDue,
@@ -389,6 +449,7 @@ export function computeBooks(everything: BooksInput) {
 }
 
 export type Books = ReturnType<typeof computeBooks>;
+
 
 export interface BookSource {
   label: string;

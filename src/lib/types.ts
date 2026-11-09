@@ -15,8 +15,10 @@ export const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
 
 /** What a wallet entry was, when it isn't the money side of an invoice, expense or advance. */
 export const NATURES: { value: string; label: string; direction: "in" | "out" | "both" }[] = [
-  { value: "income", label: "Income", direction: "in" },
-  { value: "expense", label: "Expense", direction: "out" },
+  { value: "direct_income", label: "Direct income (sales, billing)", direction: "in" },
+  { value: "income", label: "Indirect income (interest, rent, other)", direction: "in" },
+  { value: "direct_expense", label: "Direct expense (labour, material)", direction: "out" },
+  { value: "expense", label: "Indirect expense (office, rent, other)", direction: "out" },
   { value: "capital", label: "Capital added", direction: "in" },
   { value: "drawings", label: "Personal drawings", direction: "out" },
   { value: "transfer", label: "Transfer between wallets", direction: "both" },
@@ -73,6 +75,8 @@ export interface Ledger {
   created_at: string;
   is_direct: boolean;
   wallet_kind: "cash" | "bank" | null;
+  default_in_nature: string | null;
+  default_out_nature: string | null;
 }
 
 export interface TaxDetail {

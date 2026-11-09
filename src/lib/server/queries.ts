@@ -31,7 +31,7 @@ export async function fetchAll<T>(
 }
 
 export const LEDGER_COLUMNS =
-  "id, workspace_id, contractor_id, name, ledger_type, perspective, reference_no, opening_balance, opening_balance_date, description, notes, status, gst_mode, color, owner_user_id, last_activity_at, created_at, is_direct, wallet_kind";
+  "id, workspace_id, contractor_id, name, ledger_type, perspective, reference_no, opening_balance, opening_balance_date, description, notes, status, gst_mode, color, owner_user_id, last_activity_at, created_at, is_direct, wallet_kind, default_in_nature, default_out_nature";
 
 export const TXN_COLUMNS =
   "id, ledger_id, seq, voucher_no, txn_date, direction, amount, kind, is_cash, affects_party, description, counterparty, payment_mode, reference_no, notes, status, reversal_of, void_reason, created_by, created_via, updated_by, created_at, updated_at, import_batch_id, wallet_ledger_id, nature, transfer_id";

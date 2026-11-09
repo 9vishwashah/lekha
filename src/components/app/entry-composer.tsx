@@ -442,10 +442,10 @@ export function EntryComposer({
           />
         )}
         {!editing && mode === "payment" && ledger.perspective === "cashbook" && (
-          <Field label="What was this?" optional hint="Income and expenses count in Profit & Loss. Left empty, it waits in Books.">
+          <Field label="What was this?" optional hint="Income and expenses count in Profit & Loss. Left empty, it takes the meaning set in this ledger's settings, or waits in Books.">
             {(p) => (
               <Select {...p} value={nature} onChange={(e) => setNature(e.target.value)}>
-                <option value="">Decide later</option>
+                <option value="">Use this ledger&apos;s usual meaning</option>
                 {NATURES.filter((n) => n.direction === direction || n.direction === "both").map((n) => (
                   <option key={n.value} value={n.value}>
                     {n.label}

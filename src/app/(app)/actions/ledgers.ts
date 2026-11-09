@@ -156,7 +156,7 @@ const entryBase = z.object({
     idempotency_key: z.string().min(8).max(120).optional(),
     tax: taxSchema.nullable().optional(),
     wallet_ledger_id: uuid.optional().or(z.literal("")),
-    nature: z.enum(["income", "expense", "capital", "drawings", "transfer"]).optional().or(z.literal("")),
+    nature: z.enum(["direct_income", "income", "direct_expense", "expense", "capital", "drawings", "transfer"]).optional().or(z.literal("")),
 });
 
 const entrySchema = entryBase
@@ -188,6 +188,37 @@ export async function amendEntry(id: string, ledgerId: string, input: Partial<Om
   if (error) return fail(error);
   refreshLedger(ledgerId);
   return { ok: true, message: "Entry updated" };
+}
+
+const MEANINGS_IN = ["", "direct_income", "income", "capital", "transfer"] as const;
+const MEANINGS_OUT = ["", "direct_expense", "expense", "drawings", "transfer"] as const;
+const booksSchema = z.object({
+  default_in_nature: z.enum(MEANINGS_IN).optional(),
+  default_out_nature: z.enum(MEANINGS_OUT).optional(),
+});
+
+/** What a cash or bank ledger's plain money in and out usually count as. */
+export async function setLedgerBooks(ledgerId: string, input: z.input<typeof booksSchema>): Promise<ActionResult> {
+  const parsed = booksSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  const db = await userDb();
+  const { error } = await db.rpc("set_ledger_books", { p_ledger: uuid.parse(ledgerId), p: parsed.data });
+  if (error) return fail(error);
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/books");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  return { ok: true, message: "Saved. Every entry without its own meaning now follows this." };
+}
+
+/** Whether an expense category is a direct cost of the trade or an indirect one. */
+export async function setCategoryHead(categoryId: string, head: "direct" | "indirect"): Promise<ActionResult> {
+  const db = await userDb();
+  const { error } = await db.rpc("set_category_head", { p_category: uuid.parse(categoryId), p_head: head });
+  if (error) return fail(error);
+  revalidatePath("/books");
+  revalidatePath("/dashboard");
+  return { ok: true, message: head === "direct" ? "Counted as a direct expense" : "Counted as an indirect expense" };
 }
 
 /** Which wallet an entry went through, or what it was. The money itself does not change. */

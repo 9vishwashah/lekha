@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/server/context";
 import { userDb } from "@/lib/supabase/server";
 import { getCollaborators, getLedger, getPersonalLedger, listContractors } from "@/lib/server/queries";
+import { LedgerMeaningForm } from "@/components/app/ledger-meaning";
+import { Card, SectionTitle } from "@/components/ui/bits";
 import { ledgerAccess } from "@/lib/server/access";
 import { PageHeader } from "@/components/ui/bits";
 import { LedgerSettings } from "@/components/app/ledger-settings";
@@ -39,6 +41,14 @@ export default async function LedgerSettingsPage(props: PageProps<"/ledgers/[id]
         <ArrowLeft className="size-4" /> {ledger.name}
       </Link>
       <PageHeader title="Ledger settings" />
+      {ledger.perspective === "cashbook" && (
+        <section className="mb-8">
+          <SectionTitle className="mb-4">Accounting head</SectionTitle>
+          <Card>
+            <LedgerMeaningForm ledger={ledger} />
+          </Card>
+        </section>
+      )}
       <LedgerSettings
         ledger={ledger}
         contractors={contractors.filter((c) => c.is_active || c.id === ledger.contractor_id).map((c) => ({ id: c.id, name: c.name, kind: c.kind, phone: c.phone }))}
