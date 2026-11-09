@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useState } from "react";
 import { Check } from "lucide-react";
 import { ClientPicker, type ClientOption } from "./client-picker";
@@ -47,7 +48,7 @@ export function LedgerForm({
   };
 
   return (
-    <form action={action} className="flex flex-col gap-8">
+    <ActionForm action={action} className="flex flex-col gap-8">
       <input type="hidden" name="ledger_type" value={type === "wallet" ? "basic" : type} />
       <input type="hidden" name="color" value={color} />
       {type !== "personal" && <input type="hidden" name="perspective" value={type === "wallet" ? "cashbook" : "party"} />}
@@ -183,6 +184,6 @@ export function LedgerForm({
           {pending ? "Creating…" : "Create ledger"}
         </Button>
       </div>
-    </form>
+    </ActionForm>
   );
 }

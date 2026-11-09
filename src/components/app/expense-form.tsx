@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -73,7 +74,7 @@ export function ExpenseForm({
   }, [state, router, withClient]);
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <ActionForm action={action} className="flex flex-col gap-5">
       {!expense && <input type="hidden" name="idempotency_key" value={key} />}
       <Field label="Amount" error={err("amount")}>
         {(p) => <MoneyInput {...p} big name="amount" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required autoFocus={!expense} />}
@@ -190,6 +191,6 @@ export function ExpenseForm({
           {pending ? "Saving…" : expense ? "Save changes" : "Save expense"}
         </Button>
       </div>
-    </form>
+    </ActionForm>
   );
 }

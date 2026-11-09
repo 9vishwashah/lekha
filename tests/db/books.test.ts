@@ -262,7 +262,7 @@ describe("books", () => {
     const w = await world("Void split");
     const a = await w.client("A");
     const r = await rpc<{ id: string; expense_id: string }>(db, OWNER, "public.create_split_expense($1::jsonb)", [j({ workspace_id: w.ws, title: "D", expense_date: "2026-10-04", category_id: w.category, amount: "900", your_share: "300", ledger_id: w.cash, people: [{ contractor_id: a, amount: "600" }] })]);
-    await rpc(db, OWNER, "public.void_expense($1, $2)", [r.expense_id, "Wrong"]);
+    await rpc(db, OWNER, "public.delete_expense($1)", [r.expense_id]);
     const b = await books(w.ws);
     expect(b.cash).toBe(0n);
     expect(b.debtors).toBe(0n);

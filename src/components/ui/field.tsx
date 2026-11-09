@@ -1,6 +1,6 @@
 "use client";
 import type { ComponentProps, ReactNode } from "react";
-import { useId } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
 const control =
@@ -66,7 +66,68 @@ export function Select({ className, children, ...props }: ComponentProps<"select
 }
 
 /** Amount entry: numeric keyboard on phones, rupee prefix, no spinners. */
-export function MoneyInput({ className, big, ...props }: ComponentProps<"input"> & { big?: boolean }) {
+/** Digits, one decimal point with up to 2 places, and a leading minus: the plain amount. */
+export function plainAmount(text: string) {
+  const negative = text.trim().startsWith("-");
+  const [whole = "", ...rest] = text.replace(/[^0-9.]/g, "").split(".");
+  const decimals = rest.length ? "." + rest.join("").slice(0, 2) : "";
+  return (negative ? "-" : "") + whole.replace(/^0+(?=\d)/, "") + decimals;
+}
+
+/** Indian grouping as you type: 1,17,000 and 11,70,000, never 117,000. */
+export function groupIndian(plain: string) {
+  const negative = plain.startsWith("-");
+  const [whole, decimals] = (negative ? plain.slice(1) : plain).split(".");
+  const last3 = whole.slice(-3);
+  const head = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+  const grouped = head ? `${head},${last3}` : last3;
+  return (negative ? "-" : "") + grouped + (decimals !== undefined ? `.${decimals}` : "");
+}
+
+/** "11.7 lakh", "1.25 crore" for big amounts, so the size reads at a glance. */
+export function amountInWords(plain: string) {
+  const n = Math.abs(Number(plain));
+  if (!Number.isFinite(n) || n < 100000) return "";
+  const trim = (v: number) => v.toFixed(2).replace(/\.?0+$/, "");
+  return n >= 10000000 ? `${trim(n / 10000000)} crore` : `${trim(n / 100000)} lakh`;
+}
+
+/**
+ * Amount entry: numeric keyboard on phones, rupee prefix, and Indian commas while typing so the
+ * number of zeros is obvious. What the form and onChange receive stays the plain number (1170000),
+ * so nothing that reads amounts has to know about the commas.
+ */
+export function MoneyInput({
+  className,
+  big,
+  value,
+  defaultValue,
+  onChange,
+  name,
+  ...props
+}: ComponentProps<"input"> & { big?: boolean }) {
+  const controlled = value !== undefined;
+  const [own, setOwn] = useState(() => plainAmount(String(defaultValue ?? "")));
+  const plain = controlled ? plainAmount(String(value ?? "")) : own;
+  const shown = groupIndian(plain);
+  const words = amountInWords(plain);
+  const input = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+
+  // Put the cursor back after the same number of digits it was after, once commas move.
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (caret.current === null || !el || el !== document.activeElement) return;
+    let seen = 0;
+    let at = 0;
+    while (at < el.value.length && seen < caret.current) {
+      if (/[0-9.\-]/.test(el.value[at])) seen += 1;
+      at += 1;
+    }
+    el.setSelectionRange(at, at);
+    caret.current = null;
+  });
+
   return (
     <div className="relative">
       <span
@@ -79,11 +140,30 @@ export function MoneyInput({ className, big, ...props }: ComponentProps<"input">
         ₹
       </span>
       <input
+        ref={input}
         inputMode="decimal"
         autoComplete="off"
-        className={cn(control, "num", big ? "display h-20 pl-11 text-[2.5rem] font-bold" : "h-12 pl-9 text-[16px]", className)}
+        className={cn(control, "num", big ? "display h-20 pl-11 text-[2.5rem] font-bold" : "h-12 pl-9 text-[16px]", words && (big ? "pr-32" : "pr-24"), className)}
         {...props}
+        value={shown}
+        onChange={(e) => {
+          const el = e.target;
+          const before = el.value.slice(0, el.selectionStart ?? el.value.length);
+          caret.current = before.replace(/[^0-9.\-]/g, "").length;
+          const next = plainAmount(el.value);
+          if (!controlled) setOwn(next);
+          // Callers read e.target.value: hand them the plain number; the box shows it grouped.
+          el.value = next;
+          onChange?.(e);
+          el.value = groupIndian(next);
+        }}
       />
+      {words && (
+        <span aria-hidden className={cn("pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ink-3", big ? "text-[15px] font-medium" : "text-[13px]")}>
+          {words}
+        </span>
+      )}
+      {name && <input type="hidden" name={name} value={plain} />}
     </div>
   );
 }

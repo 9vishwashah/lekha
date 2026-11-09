@@ -366,6 +366,19 @@ export async function recordPayment(id: string, input: z.input<typeof paymentSch
   return { ok: true, message: (data as { duplicate: boolean }).duplicate ? "Already recorded" : "Payment recorded" };
 }
 
+/** Removes a payment and everything it wrote (its cash and TDS entries); the invoice reopens. */
+export async function deletePayment(paymentId: string, invoiceId: string): Promise<ActionResult> {
+  await requireUser();
+  const db = await userDb();
+  const { error } = await db.rpc("delete_invoice_payment", { p_id: uuid.parse(paymentId) });
+  if (error) return fail(error);
+  refresh(invoiceId);
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/books");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Payment deleted" };
+}
+
 export async function reversePayment(paymentId: string, invoiceId: string, reason: string, kind: "correction" | "refund"): Promise<ActionResult> {
   await requireUser();
   const db = await userDb();

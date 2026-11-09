@@ -9,8 +9,8 @@ import type { WalletOption } from "./wallet-select";
 import { DateInput } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/bits";
 import { Amount } from "@/components/ui/amount";
-import { classifyEntry, reverseEntry, voidEntry } from "@/app/(app)/actions/ledgers";
-import { voidTransfer } from "@/app/(app)/actions/entries";
+import { classifyEntry, deleteEntry, reverseEntry } from "@/app/(app)/actions/ledgers";
+import { deleteTransfer } from "@/app/(app)/actions/entries";
 import { KIND_LABEL } from "@/lib/domain/ledger";
 import { toPaise, formatINR } from "@/lib/domain/money";
 import { formatDate, formatDateTime } from "@/lib/domain/dates";
@@ -192,7 +192,7 @@ export function EntryDetail({
             )}
             {voidable && (
               <Button variant="secondary" onClick={() => setStep("void")}>
-                Void
+                Delete
               </Button>
             )}
           </div>
@@ -209,17 +209,25 @@ export function EntryDetail({
             className="flex flex-col gap-4 rounded-[24px] bg-sunken p-4"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => (step === "void" ? (txn.transfer_id ? voidTransfer(txn.transfer_id, reason) : voidEntry(txn.id, ledgerId, reason)) : reverseEntry(txn.id, ledgerId, reason, date)));
+              run(() => (step === "void" ? (txn.transfer_id ? deleteTransfer(txn.transfer_id) : deleteEntry(txn.id, ledgerId)) : reverseEntry(txn.id, ledgerId, reason, date)));
             }}
           >
             <p className="text-[15px]">
               {step === "void"
-                ? "Voiding keeps this entry in the history, crossed out, and removes it from every balance."
+                ? txn.transfer_id
+                  ? "Deletes this transfer for good, both halves."
+                  : txn.kind === "expense"
+                    ? "Deletes this entry and its expense for good."
+                    : txn.kind === "advance_given" || txn.kind === "advance_recovery"
+                      ? "Deletes this entry and its advance record for good."
+                      : "Deletes this entry for good, with any reversal of it. It cannot be undone."
                 : "Reversing posts an equal and opposite entry. Both stay visible and cancel each other out."}
             </p>
-            <Field label="Reason">
-              {(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} required maxLength={300} autoFocus placeholder="Entered twice" />}
-            </Field>
+            {step === "reverse" && (
+              <Field label="Reason">
+                {(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} required maxLength={300} autoFocus placeholder="Payment bounced" />}
+              </Field>
+            )}
             {step === "reverse" && (
               <Field label="Reversal date">
                 {(p) => <DateInput {...p} value={date} onChange={setDate} required />}
@@ -234,8 +242,8 @@ export function EntryDetail({
               <Button variant="ghost" onClick={() => setStep("view")}>
                 Cancel
               </Button>
-              <Button type="submit" variant={step === "void" ? "danger" : "primary"} disabled={pending || !reason.trim()} className="flex-1">
-                {pending ? "Saving…" : step === "void" ? "Void entry" : "Post reversal"}
+              <Button type="submit" variant={step === "void" ? "danger" : "primary"} disabled={pending || (step === "reverse" && !reason.trim())} className="flex-1">
+                {pending ? "Saving…" : step === "void" ? "Delete for good" : "Post reversal"}
               </Button>
             </div>
           </form>

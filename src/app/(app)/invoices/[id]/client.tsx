@@ -22,6 +22,7 @@ import {
   recordReminder,
   removeFile,
   reversePayment,
+  deletePayment,
   reviewSubmission,
   revokeLink,
   rotateLink,
@@ -436,6 +437,19 @@ export function PaymentHistory({ invoiceId, payments, canWrite }: { invoiceId: s
             {canWrite && p.status === "confirmed" && (
               <Button size="sm" variant="ghost" onClick={() => setTarget(p)}>
                 Reverse
+              </Button>
+            )}
+            {canWrite && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => {
+                  if (!confirm("Delete this payment for good? Its bank and TDS entries go with it, and the invoice balance comes back.")) return;
+                  run(() => deletePayment(p.id, invoiceId));
+                }}
+              >
+                Delete
               </Button>
             )}
           </li>

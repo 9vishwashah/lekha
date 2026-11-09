@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useState } from "react";
 import { createWorkspace } from "@/app/(app)/actions/workspace";
 import { Field, Input } from "@/components/ui/field";
@@ -37,7 +38,7 @@ export function OnboardingForm({
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   return (
-    <form action={action} className="flex flex-col gap-6">
+    <ActionForm action={action} className="flex flex-col gap-6">
       {next && <input type="hidden" name="next" value={next} />}
       <Field label="Your name" hint="Shown in your greeting, and to people you share ledgers with." error={err("full_name")}>
         {(p) => (
@@ -119,6 +120,6 @@ export function OnboardingForm({
       <Button type="submit" size="lg" disabled={pending}>
         {pending ? "Setting up…" : next ? "Continue to invitation" : "Continue"}
       </Button>
-    </form>
+    </ActionForm>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -65,7 +66,7 @@ export function ContractorForm({
   }, [name, phone, existing, contractor?.id]);
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <ActionForm action={action} className="flex flex-col gap-4">
       <input type="hidden" name="kind" value={kind} />
       <Segmented
         label="Type of account"
@@ -118,6 +119,6 @@ export function ContractorForm({
       <Button type="submit" size="lg" disabled={pending}>
         {pending ? "Saving…" : contractor ? "Save" : "Add client"}
       </Button>
-    </form>
+    </ActionForm>
   );
 }

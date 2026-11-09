@@ -93,10 +93,10 @@ export async function recordTransfer(input: z.input<typeof transferSchema>): Pro
   return { ok: true, message: "Transfer recorded" };
 }
 
-export async function voidTransfer(transferId: string, reason: string): Promise<ActionResult> {
+export async function deleteTransfer(transferId: string): Promise<ActionResult> {
   const ctx = await getWorkspace();
-  const { error } = await ctx.db.rpc("void_transfer", { p_transfer: uuid.parse(transferId), p_reason: reason });
+  const { error } = await ctx.db.rpc("delete_transfer", { p_transfer: uuid.parse(transferId) });
   if (error) return fail(error);
   refresh();
-  return { ok: true, message: "Transfer voided" };
+  return { ok: true, message: "Transfer deleted" };
 }

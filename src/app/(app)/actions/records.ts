@@ -183,14 +183,16 @@ export async function saveExpense(id: string | null, _: unknown, form: FormData)
   return { ok: true, message: id ? "Expense updated" : "Expense saved" };
 }
 
-export async function voidExpense(id: string, reason: string): Promise<ActionResult> {
+export async function deleteExpense(id: string): Promise<ActionResult> {
   const db = await userDb();
-  const { error } = await db.rpc("void_expense", { p_id: uuid.parse(id), p_reason: reason });
+  const { error } = await db.rpc("delete_expense", { p_id: uuid.parse(id) });
   if (error) return fail(error);
   revalidatePath("/expenses");
   revalidatePath("/ledgers", "layout");
   revalidatePath("/contractors", "layout");
-  return { ok: true, message: "Expense voided" };
+  revalidatePath("/books");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Expense deleted" };
 }
 
 export async function addCategory(name: string): Promise<ActionResult<{ id: string }>> {
@@ -255,21 +257,23 @@ export async function recordAllocation(_: unknown, form: FormData): Promise<Acti
   return { ok: true, message: parsed.data.kind === "recovery" ? "Recovery recorded" : "Adjustment recorded" };
 }
 
-export async function voidAllocation(id: string, advanceId: string, reason: string): Promise<ActionResult> {
+export async function deleteAllocation(id: string, advanceId: string): Promise<ActionResult> {
   const db = await userDb();
-  const { error } = await db.rpc("void_advance_allocation", { p_id: uuid.parse(id), p_reason: reason });
+  const { error } = await db.rpc("delete_advance_allocation", { p_id: uuid.parse(id) });
   if (error) return fail(error);
   revalidatePath(`/advances/${advanceId}`);
-  return { ok: true, message: "Recovery voided" };
+  revalidatePath("/ledgers", "layout");
+  return { ok: true, message: "Deleted" };
 }
 
-export async function voidAdvance(id: string, reason: string): Promise<ActionResult> {
+export async function deleteAdvance(id: string): Promise<ActionResult> {
   const db = await userDb();
-  const { error } = await db.rpc("void_advance", { p_id: uuid.parse(id), p_reason: reason });
+  const { error } = await db.rpc("delete_advance", { p_id: uuid.parse(id) });
   if (error) return fail(error);
-  revalidatePath(`/advances/${id}`);
   revalidatePath("/advances");
-  return { ok: true, message: "Advance voided" };
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/contractors", "layout");
+  return { ok: true, message: "Advance deleted" };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -327,14 +331,14 @@ export async function saveSharedExpense(correctingId: string | null, input: Shar
   return { ok: true, message: duplicate ? "Already saved" : correctingId ? "Expense corrected" : "Expense added" };
 }
 
-export async function voidSharedExpense(id: string, ledgerId: string, reason: string): Promise<ActionResult> {
+export async function deleteSharedExpense(id: string, ledgerId: string): Promise<ActionResult> {
   const db = await userDb();
-  const { error } = await db.rpc("void_shared_expense", { p_id: uuid.parse(id), p_reason: reason });
+  const { error } = await db.rpc("delete_shared_expense", { p_id: uuid.parse(id) });
   if (error) return fail(error);
   revalidatePath(`/ledgers/${ledgerId}`);
   revalidatePath("/expenses");
   revalidatePath("/contractors", "layout");
-  return { ok: true, message: "Expense removed from balances" };
+  return { ok: true, message: "Expense deleted" };
 }
 
 const settlementSchema = z.object({
@@ -399,12 +403,12 @@ export async function adoptDirectLedger(ledgerId: string): Promise<ActionResult>
   return { ok: true, message: "Now the main account" };
 }
 
-export async function voidRepayment(id: string, ledgerId: string, reason: string): Promise<ActionResult> {
+export async function deleteRepayment(id: string, ledgerId: string): Promise<ActionResult> {
   const db = await userDb();
-  const { error } = await db.rpc("void_settlement", { p_id: uuid.parse(id), p_reason: reason });
+  const { error } = await db.rpc("delete_settlement", { p_id: uuid.parse(id) });
   if (error) return fail(error);
   revalidatePath(`/ledgers/${ledgerId}`, "layout");
   revalidatePath("/ledgers", "layout");
   revalidatePath("/contractors", "layout");
-  return { ok: true, message: "Repayment voided" };
+  return { ok: true, message: "Repayment deleted" };
 }

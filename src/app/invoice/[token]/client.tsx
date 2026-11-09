@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -110,7 +111,7 @@ export function ClaimButton({ token, balance, today }: { token: string; balance:
             <Button onClick={() => setOpen(false)}>Done</Button>
           </div>
         ) : (
-          <form action={submit} className="flex flex-col gap-4 pb-2">
+          <ActionForm action={submit} className="flex flex-col gap-4 pb-2">
             <Field label="Amount paid">{(p) => <MoneyInput {...p} name="amount" big defaultValue={balance} required />}</Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Date paid">{(p) => <Input {...p} name="paid_on" type="date" defaultValue={today} max={today} required />}</Field>
@@ -139,7 +140,7 @@ export function ClaimButton({ token, balance, today }: { token: string; balance:
             <Button type="submit" size="lg" disabled={pending}>
               {pending ? "Sending…" : "Send to the business"}
             </Button>
-          </form>
+          </ActionForm>
         )}
       </Sheet>
     </>

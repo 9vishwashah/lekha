@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useState } from "react";
 import { saveProfile } from "@/app/(app)/actions/workspace";
 import { Field, Input } from "@/components/ui/field";
@@ -13,7 +14,7 @@ export function ProfileForm({ name, phone, username, photo }: { name: string; ph
   return (
     <div className="flex flex-col gap-6">
       <AvatarEditor name={name} photo={photo} />
-      <form action={action} className="flex flex-col gap-5">
+      <ActionForm action={action} className="flex flex-col gap-5">
         <Field label="Your name" hint="Used in your greeting and shown to people you share ledgers with." error={err("full_name")}>
           {(p) => <Input {...p} name="full_name" defaultValue={name} autoComplete="name" required maxLength={120} />}
         </Field>
@@ -43,7 +44,7 @@ export function ProfileForm({ name, phone, username, photo }: { name: string; ph
         <Button type="submit" disabled={pending} className="self-start">
           {pending ? "Saving…" : "Save profile"}
         </Button>
-      </form>
+      </ActionForm>
     </div>
   );
 }

@@ -64,7 +64,7 @@ export async function expensesTable(db: Db, workspaceId: string, range: DateRang
     title: "Expenses",
     subtitle: [range.from || range.to ? `Period ${range.from ? formatDate(range.from) : "start"} to ${range.to ? formatDate(range.to) : "today"}` : "All expenses"],
     summary: [
-      { label: "Total (excluding void)", value: formatINR(sum(active.map((r) => toPaise(r.amount)))) },
+      { label: "Total", value: formatINR(sum(active.map((r) => toPaise(r.amount)))) },
       ...[...byCat.entries()].sort((a, b) => (a[1] > b[1] ? -1 : 1)).slice(0, 7).map(([id, v]) => ({ label: name.get(id) ?? "Other", value: formatINR(v) })),
     ],
     columns: [
@@ -85,7 +85,7 @@ export async function expensesTable(db: Db, workspaceId: string, range: DateRang
       gst: r.gst_amount ? toPaise(r.gst_amount) : null,
       amount: toPaise(r.amount),
     })),
-    totals: { title: "Total (excluding void)", amount: sum(active.map((r) => toPaise(r.amount))) },
+    totals: { title: "Total", amount: sum(active.map((r) => toPaise(r.amount))) },
     footnote: "Expenses paid from a ledger also appear there as one Money Out entry. Add them up from one place only.",
   };
 }

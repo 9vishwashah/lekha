@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { walletForMode } from "@/lib/domain/books";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -36,7 +37,7 @@ export function AdvanceForm({
   }, [state, router]);
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <ActionForm action={action} className="flex flex-col gap-5">
       <input type="hidden" name="idempotency_key" value={key} />
       <Field label="Given to" error={err("contractor_id")}>
         {(p) => (
@@ -101,6 +102,6 @@ export function AdvanceForm({
       <Button type="submit" size="lg" disabled={pending}>
         {pending ? "Saving…" : "Record advance"}
       </Button>
-    </form>
+    </ActionForm>
   );
 }

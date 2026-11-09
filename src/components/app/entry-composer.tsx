@@ -171,6 +171,7 @@ export function EntryComposer({
           payment_mode: paymentMode as "cash",
           description,
           idempotency_key: key,
+          wallet_ledger_id: ledger.perspective === "party" ? wallet.value : "",
         });
       } else {
         const payload = {
@@ -296,14 +297,14 @@ export function EntryComposer({
             )}
           </Field>
         )}
-        {!editing && mode === "payment" && ledger.perspective === "party" && (
+        {!editing && (mode === "payment" || mode === "tax") && ledger.perspective === "party" && (
           <WalletSelect
             wallets={wallets}
             value={wallet.value}
             onChange={wallet.setValue}
-            label={direction === "in" ? "Received into wallet (Bank / Cash)" : "Paid from wallet (Bank / Cash)"}
+            label={mode === "tax" || direction === "out" ? "Paid from wallet (Bank / Cash)" : "Received into wallet (Bank / Cash)"}
             noneLabel="None (this ledger only)"
-            hint="The same entry shows in that wallet too, so its balance moves with this one. Edit, void or reverse it here and both follow."
+            hint="The same entry shows in that wallet too, so its balance moves with this one. Edit, delete or reverse it here and both follow."
           />
         )}
 

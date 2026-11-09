@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -90,7 +91,7 @@ export function LedgerSettings({
       <section>
         <SectionTitle className="mb-4">Details</SectionTitle>
         <Card>
-          <form action={action} className="flex flex-col gap-5">
+          <ActionForm action={action} className="flex flex-col gap-5">
             <Field label="Name" error={err("name")}>
               {(p) => <Input {...p} name="name" defaultValue={ledger.name} required maxLength={120} />}
             </Field>
@@ -154,7 +155,7 @@ export function LedgerSettings({
             <Button type="submit" disabled={saving} className="self-start">
               {saving ? "Saving…" : "Save details"}
             </Button>
-          </form>
+          </ActionForm>
         </Card>
       </section>
 
@@ -351,7 +352,7 @@ function DeleteLedger({ ledger }: { ledger: Ledger }) {
       <Card className="flex flex-col items-start gap-3">
         <p className="text-[15px] text-ink-2">
           Deletes this {ledger.ledger_type === "personal" ? "account" : "ledger"} and every entry in it, for good. Share links stop working. Lekha refuses while an invoice, expense,
-          advance or payment elsewhere still depends on it, and says what to void first.
+          advance or payment elsewhere still depends on it, and says what to delete first.
         </p>
         <Button variant="danger" onClick={() => setOpen(true)}>
           Delete {ledger.ledger_type === "personal" ? "account" : "ledger"}

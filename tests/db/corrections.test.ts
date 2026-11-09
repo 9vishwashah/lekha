@@ -59,7 +59,7 @@ describe("corrections", () => {
     });
     expect(res, JSON.stringify({ res, stored })).toMatchObject({ ok: true, message: "Expense corrected" });
     const rows = await as(db, ME, (q) => q<{ description: string; status: string }>("select description, status from public.shared_expenses where ledger_id = $1 order by created_at", [ledger]));
-    expect(rows).toEqual([{ description: "Dinner", status: "void" }, { description: "Dinner (fixed)", status: "posted" }]);
+    expect(rows).toEqual([{ description: "Dinner (fixed)", status: "posted" }]); // the corrected record replaces the old one
   });
 
   it("saves an edited ledger entry, including fields that were emptied", async () => {

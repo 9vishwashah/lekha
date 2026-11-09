@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState } from "react";
 import { createWorkspace } from "@/app/(app)/actions/workspace";
 import { Card } from "@/components/ui/bits";
@@ -9,7 +10,7 @@ export function NewWorkspace() {
   const [state, action, pending] = useActionState(createWorkspace, null);
   return (
     <Card>
-      <form action={action} className="flex flex-col gap-4">
+      <ActionForm action={action} className="flex flex-col gap-4">
         <p className="text-[15px] text-ink-2">
           Each workspace is a separate, private book with its own clients, ledgers and members. Switch between them from the workspace name at the top.
         </p>
@@ -19,7 +20,7 @@ export function NewWorkspace() {
         <Button type="submit" variant="secondary" disabled={pending} className="self-start">
           {pending ? "Creating…" : "Create workspace"}
         </Button>
-      </form>
+      </ActionForm>
     </Card>
   );
 }

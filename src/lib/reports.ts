@@ -162,8 +162,8 @@ export function ledgerStatementTable(input: {
     landscape: includeTax || columns.length > 7,
     footnote:
       ledger.perspective === "cashbook"
-        ? "Balance = opening balance + money in − money out. Bills and tax-only rows do not move cash. Void and draft rows are shown but not counted."
-        : "Balance = opening + paid to party − received from party − their bills. Positive means the party owes you. Void and draft rows are not counted.",
+        ? "Balance = opening balance + money in − money out. Bills and tax-only rows do not move cash. Draft rows are shown but not counted."
+        : "Balance = opening + paid to party − received from party − their bills. Positive means the party owes you. Draft rows are not counted.",
   };
 }
 

@@ -1,8 +1,9 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { recordAllocation, voidAdvance, voidAllocation } from "@/app/(app)/actions/records";
+import { recordAllocation, deleteAdvance, deleteAllocation } from "@/app/(app)/actions/records";
 import { Card } from "@/components/ui/bits";
 import { Button } from "@/components/ui/button";
 import { Field, Input, MoneyInput, Select } from "@/components/ui/field";
@@ -46,7 +47,7 @@ export function AllocationForm({
 
   return (
     <Card>
-      <form action={action} className="flex flex-col gap-5">
+      <ActionForm action={action} className="flex flex-col gap-5">
         <input type="hidden" name="advance_id" value={advanceId} />
         <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="idempotency_key" value={key} />
@@ -111,12 +112,12 @@ export function AllocationForm({
         <Button type="submit" size="lg" disabled={pending || !value || over}>
           {pending ? "Saving…" : kind === "recovery" ? "Record cash back" : "Record adjustment"}
         </Button>
-      </form>
+      </ActionForm>
     </Card>
   );
 }
 
-export function VoidAllocation({ id, advanceId }: { id: string; advanceId: string }) {
+export function DeleteAllocation({ id, advanceId }: { id: string; advanceId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
@@ -125,42 +126,40 @@ export function VoidAllocation({ id, advanceId }: { id: string; advanceId: strin
       variant="ghost"
       disabled={pending}
       onClick={() => {
-        const reason = prompt("Why is this recovery being voided?");
-        if (!reason?.trim()) return;
+        if (!confirm("Delete this for good? Its ledger entry goes with it.")) return;
         start(async () => {
-          const res = await voidAllocation(id, advanceId, reason);
+          const res = await deleteAllocation(id, advanceId);
           if (!res.ok) toast.error(res.error);
-          else toast.success(res.message ?? "Voided");
+          else toast.success(res.message ?? "Deleted");
           router.refresh();
         });
       }}
     >
-      Void
+      Delete
     </Button>
   );
 }
 
-export function VoidAdvance({ id, hasActiveAllocations }: { id: string; hasActiveAllocations: boolean }) {
+export function DeleteAdvance({ id, hasActiveAllocations }: { id: string; hasActiveAllocations: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  if (hasActiveAllocations) return <p className="text-[13px] text-ink-3">To void this advance, void its recoveries and adjustments first.</p>;
   return (
     <Button
       variant="ghost"
       className="self-start"
       disabled={pending}
       onClick={() => {
-        const reason = prompt("Why is this advance being voided? It stays in history.");
-        if (!reason?.trim()) return;
+        const also = hasActiveAllocations ? " Its recoveries and adjustments are deleted with it." : "";
+        if (!confirm(`Delete this advance for good?${also} Its ledger entries go with it.`)) return;
         start(async () => {
-          const res = await voidAdvance(id, reason);
-          if (!res.ok) toast.error(res.error);
-          else toast.success(res.message ?? "Voided");
-          router.refresh();
+          const res = await deleteAdvance(id);
+          if (!res.ok) return void toast.error(res.error);
+          toast.success(res.message ?? "Deleted");
+          router.push("/advances");
         });
       }}
     >
-      Void this advance
+      Delete this advance
     </Button>
   );
 }

@@ -232,12 +232,14 @@ export async function classifyEntry(id: string, input: { wallet_ledger_id?: stri
   return { ok: true, message: "Saved" };
 }
 
-export async function voidEntry(id: string, ledgerId: string, reason: string): Promise<ActionResult> {
+export async function deleteEntry(id: string, ledgerId: string): Promise<ActionResult> {
   const db = await userDb();
-  const { error } = await db.rpc("void_transaction", { p_id: uuid.parse(id), p_reason: reason });
+  const { error } = await db.rpc("delete_transaction", { p_id: uuid.parse(id) });
   if (error) return fail(error);
   refreshLedger(ledgerId);
-  return { ok: true, message: "Entry voided" };
+  revalidatePath("/ledgers", "layout");
+  revalidatePath("/books");
+  return { ok: true, message: "Entry deleted" };
 }
 
 export async function reverseEntry(id: string, ledgerId: string, reason: string, date: string): Promise<ActionResult> {
@@ -260,6 +262,7 @@ const settlementSchema = z.object({
   description: optionalText(500),
   settlement_status: z.enum(["pending", "completed"]).optional(),
   idempotency_key: z.string().min(8).max(120).optional(),
+  wallet_ledger_id: uuid.optional().or(z.literal("")),
 });
 
 export async function recordTaxPayment(input: z.input<typeof settlementSchema>): Promise<ActionResult> {
@@ -269,6 +272,8 @@ export async function recordTaxPayment(input: z.input<typeof settlementSchema>):
   const { error } = await db.rpc("record_tax_settlement", { p: parsed.data });
   if (error) return fail(error);
   refreshLedger(parsed.data.ledger_id);
+  if (parsed.data.wallet_ledger_id) revalidatePath(`/ledgers/${parsed.data.wallet_ledger_id}`);
+  revalidatePath("/books");
   revalidatePath("/reports/tax");
   return { ok: true, message: "Tax payment recorded" };
 }

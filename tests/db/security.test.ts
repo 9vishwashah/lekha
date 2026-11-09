@@ -191,9 +191,10 @@ describe("expenses and advances", () => {
     await rpc(db, A, "public.update_expense($1, $2::jsonb)", [res.id, j({ amount: "4300" })]);
     const [linked] = await as(db, A, (q) => q<{ amount: string }>("select amount from public.transactions where id = $1", [res.transaction_id]));
     expect(linked.amount).toBe("4300.00");
-    await rpc(db, A, "public.void_expense($1, $2)", [res.id, "Returned"]);
-    const [voided] = await as(db, A, (q) => q<{ status: string }>("select status from public.transactions where id = $1", [res.transaction_id]));
-    expect(voided.status).toBe("void");
+    await rpc(db, A, "public.delete_expense($1)", [res.id]);
+    // Deleting the expense removes its ledger entry with it.
+    expect(await as(db, A, (q) => q("select id from public.transactions where id = $1", [res.transaction_id]))).toHaveLength(0);
+    expect(await as(db, A, (q) => q("select id from public.expenses where id = $1", [res.id]))).toHaveLength(0);
   });
 
   it("rolls back the ledger entry when the expense itself fails", async () => {
@@ -309,7 +310,7 @@ describe("collaborators", () => {
     const [row] = await as(db, C, (q) => q<{ id: string }>("select id from public.ledger_collaborators where user_id = $1", [C]));
     await rpc(db, A, "public.update_collaborator($1, $2::jsonb)", [row.id, j({ can_edit_all: true })]);
     const [adv] = await as(db, A, (q) => q<{ id: string }>("select id from public.transactions where ledger_id = $1 and kind = 'advance_given' limit 1", [ledgerA]));
-    await expectError(rpc(db, C, "public.void_transaction($1, $2)", [adv.id, "nope"]), /permission/);
+    await expectError(rpc(db, C, "public.delete_transaction($1)", [adv.id]), /permission/);
     await rpc(db, A, "public.update_collaborator($1, $2::jsonb)", [row.id, j({ can_edit_all: false })]);
   });
 

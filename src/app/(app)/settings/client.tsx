@@ -1,4 +1,5 @@
 "use client";
+import { ActionForm } from "@/components/ui/action-form";
 import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -17,7 +18,7 @@ export function WorkspaceSettingsForm({ workspace, canEdit }: { workspace: Works
   const [state, action, pending] = useActionState(updateWorkspace, null);
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <ActionForm action={action} className="flex flex-col gap-5">
       <fieldset disabled={!canEdit} className="flex flex-col gap-5">
         <Field label="Workspace name" error={err("name")}>
           {(p) => <Input {...p} name="name" defaultValue={workspace.name} required maxLength={120} />}
@@ -68,7 +69,7 @@ export function WorkspaceSettingsForm({ workspace, canEdit }: { workspace: Works
           {pending ? "Saving…" : "Save settings"}
         </Button>
       )}
-    </form>
+    </ActionForm>
   );
 }
 
@@ -181,7 +182,7 @@ export function MembersPanel({
       )}
 
       {isAdmin && linkOpen && (
-        <form action={action} className="flex flex-col gap-3 rounded-[24px] bg-canvas p-4">
+        <ActionForm action={action} className="flex flex-col gap-3 rounded-[24px] bg-canvas p-4">
           <h3 className="font-semibold">Invite link</h3>
           <p className="text-[14px] text-ink-2">For someone not on Lekha yet. They sign up from the link and join with this role.</p>
           <Field label="Role">
@@ -214,7 +215,7 @@ export function MembersPanel({
             </div>
           )}
           {state && !state.ok && <p className="font-medium text-out">{state.error}</p>}
-        </form>
+        </ActionForm>
       )}
 
       {invites.length > 0 && (

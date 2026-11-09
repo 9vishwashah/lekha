@@ -136,7 +136,7 @@ describe("payments on a client", () => {
     const p = await pay({ contractor_id: c, direction: "paid", amount: "250", ledger_id: bank });
     expect(await cash(bank)).toBe(before - 250);
     expect(await owes(c)).toBe(250);
-    await rpc(db, OWNER, "public.void_settlement($1, $2)", [p.id, "Mistake"]);
+    await rpc(db, OWNER, "public.delete_settlement($1)", [p.id]);
     expect(await cash(bank)).toBe(before);
     expect(await owes(c)).toBe(0);
   });
@@ -145,7 +145,7 @@ describe("payments on a client", () => {
     const c = await client("Pay Four");
     const p = await pay({ contractor_id: c, direction: "received", amount: "100", ledger_id: bank });
     const s = await one<{ transaction_id: string }>("select transaction_id from public.settlements where id = $1", [p.id]);
-    await expect(rpc(db, OWNER, "public.void_transaction($1, $2)", [s.transaction_id, "x"])).rejects.toThrow(/client account/);
+    await expect(rpc(db, OWNER, "public.delete_transaction($1)", [s.transaction_id])).rejects.toThrow(/client account/);
     await expect(rpc(db, OWNER, "public.reverse_transaction($1, $2, $3)", [s.transaction_id, "x", "2026-11-03"])).rejects.toThrow(/client account/);
   });
 
@@ -264,19 +264,19 @@ describe("a split stays whole", () => {
 
   it("voiding the expense voids every share and the cash", async () => {
     const x = await made("Void via expense");
-    await rpc(db, OWNER, "public.void_expense($1, $2)", [x.r.expense_id, "Wrong"]);
+    await rpc(db, OWNER, "public.delete_expense($1)", [x.r.expense_id]);
     await allGone(x, "Void via expense");
   });
 
   it("voiding one person's share voids the whole split", async () => {
     const x = await made("Void via share");
-    await rpc(db, OWNER, "public.void_shared_expense($1, $2)", [x.leg, "Wrong"]);
+    await rpc(db, OWNER, "public.delete_shared_expense($1)", [x.leg]);
     await allGone(x, "Void via share");
   });
 
   it("the cash entry cannot be voided or reversed alone", async () => {
     const x = await made("Cash alone");
-    await expect(rpc(db, OWNER, "public.void_transaction($1, $2)", [x.r.transaction_id, "x"])).rejects.toThrow(/split expense/);
+    await expect(rpc(db, OWNER, "public.delete_transaction($1)", [x.r.transaction_id])).rejects.toThrow(/split expense/);
     expect(await owes(x.a)).toBe(300);
   });
 
@@ -297,7 +297,7 @@ describe("a split stays whole", () => {
     await db.query("update public.contractors set linked_user_id = $1 where id = $2", ["user_viewer_a", a]);
     const r = await split({ title: "Viewer", amount: "900", your_share: "300", people: [{ contractor_id: a, amount: "300" }, { contractor_id: b, amount: "300" }] });
     const leg = await one<{ id: string }>("select id from public.shared_expenses where split_group_id = $1 and ledger_id = $2", [r.id, await direct(a)]);
-    await expect(rpc(db, "user_viewer_a", "public.void_shared_expense($1, $2)", [leg.id, "Nope"])).rejects.toThrow();
+    await expect(rpc(db, "user_viewer_a", "public.delete_shared_expense($1)", [leg.id])).rejects.toThrow();
     expect(await owes(b)).toBe(300);
   });
 
@@ -419,7 +419,7 @@ describe("adjusting an advance against a bill in another ledger", () => {
     expect(await s.closing(s.party)).toBe(-5000);
     const a = await s.adjust();
     expect(await s.closing(s.party)).toBe(-4000);
-    await rpc(db, OWNER, "public.void_advance_allocation($1, $2)", [a.id, "Undo"]);
+    await rpc(db, OWNER, "public.delete_advance_allocation($1)", [a.id]);
     expect(await s.closing(s.party)).toBe(-5000);
   });
 
@@ -440,6 +440,6 @@ describe("adjusting an advance against a bill in another ledger", () => {
   it("the adjustment entry cannot be voided from the ledger", async () => {
     const s = await setup("Adv Guard", "cash");
     const a = await s.adjust();
-    await expect(rpc(db, OWNER, "public.void_transaction($1, $2)", [a.transaction_id, "x"])).rejects.toThrow(/advance/);
+    await expect(rpc(db, OWNER, "public.delete_transaction($1)", [a.transaction_id])).rejects.toThrow(/advance/);
   });
 });

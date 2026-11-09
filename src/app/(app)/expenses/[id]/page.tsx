@@ -5,7 +5,7 @@ import { getWorkspace } from "@/lib/server/context";
 import { listContractors, listLedgers } from "@/lib/server/queries";
 import { Badge, PageHeader } from "@/components/ui/bits";
 import { ExpenseForm, type ExpenseValues } from "@/components/app/expense-form";
-import { VoidExpense } from "./void";
+import { DeleteExpense } from "./void";
 import { todayISO } from "@/lib/domain/dates";
 
 export const metadata = { title: "Expense" };
@@ -36,9 +36,9 @@ export default async function ExpensePage(props: PageProps<"/expenses/[id]">) {
       ) : expense.split_group_id ? (
         <>
           <p className="rounded-2xl bg-sunken p-4 text-ink-2">
-            This is your share of an expense split with other people. To change it, void it and add it again, so every person&apos;s share stays correct.
+            This is your share of an expense split with other people. To change it, delete it and add it again, so every person&apos;s share stays correct.
           </p>
-          <VoidExpense id={expense.id} linked split />
+          <DeleteExpense id={expense.id} linked split />
         </>
       ) : (
         <>
@@ -49,7 +49,7 @@ export default async function ExpensePage(props: PageProps<"/expenses/[id]">) {
             ledgers={ledgers.map((l) => ({ id: l.id, name: l.name, kind: l.wallet_kind }))}
             today={todayISO()}
           />
-          <VoidExpense id={expense.id} linked={Boolean(expense.transaction_id)} />
+          <DeleteExpense id={expense.id} linked={Boolean(expense.transaction_id)} />
         </>
       )}
     </div>

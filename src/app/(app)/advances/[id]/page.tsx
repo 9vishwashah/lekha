@@ -9,7 +9,7 @@ import { ADVANCE_STATUS_LABEL } from "@/lib/domain/advances";
 import { toPaise } from "@/lib/domain/money";
 import { formatDate, todayISO } from "@/lib/domain/dates";
 import { paymentModeLabel } from "@/lib/types";
-import { AllocationForm, VoidAdvance, VoidAllocation } from "./client";
+import { AllocationForm, DeleteAdvance, DeleteAllocation } from "./client";
 
 export const metadata = { title: "Advance" };
 
@@ -116,14 +116,14 @@ export default async function AdvancePage(props: PageProps<"/advances/[id]">) {
                   </span>
                 </span>
                 <Money value={toPaise(h.amount)} tone={h.kind === "recovery" ? "in" : undefined} className="font-semibold" />
-                {ctx.canWrite && h.status === "active" && <VoidAllocation id={h.id} advanceId={advance.id} />}
+                {ctx.canWrite && h.status === "active" && <DeleteAllocation id={h.id} advanceId={advance.id} />}
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      {ctx.canWrite && advance.status === "active" && <VoidAdvance id={advance.id} hasActiveAllocations={advance.allocations.some((a) => a.status === "active")} />}
+      {ctx.canWrite && advance.status === "active" && <DeleteAdvance id={advance.id} hasActiveAllocations={advance.allocations.some((a) => a.status === "active")} />}
     </div>
   );
 }

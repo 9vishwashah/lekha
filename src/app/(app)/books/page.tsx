@@ -152,7 +152,7 @@ export default async function BooksPage(props: PageProps<"/books">) {
             <p key={`${d.ledgerId}${d.voucher}`} className="rounded-2xl bg-mustard/40 p-4 text-[15px]">
               Possibly billed twice: bill {d.voucher} for {formatINR(d.amount)} on{" "}
               <Link href={`/ledgers/${d.ledgerId}`} className="font-semibold underline underline-offset-4">{d.ledgerName}</Link> and invoice{" "}
-              <Link href={`/invoices/${d.invoiceId}`} className="font-semibold underline underline-offset-4">{d.invoiceNo}</Link> look like the same job. Both are counted. If they are one job, void the bill on the ledger, or reverse it.
+              <Link href={`/invoices/${d.invoiceId}`} className="font-semibold underline underline-offset-4">{d.invoiceNo}</Link> look like the same job. Both are counted. If they are one job, delete the bill on the ledger.
             </p>
           ))}
           {books.unassigned !== 0n && (

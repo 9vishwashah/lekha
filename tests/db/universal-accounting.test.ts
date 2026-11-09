@@ -163,10 +163,10 @@ describe("the new entries stay whole", () => {
   it("half a transfer cannot be voided, reversed or recategorised; the transfer voids together", async () => {
     const t = await rpc<{ id: string }>(db, OWNER, "public.record_transfer($1::jsonb)", [j({ workspace_id: ws, from_ledger_id: cash, to_ledger_id: bank, amount: "100", txn_date: "2026-11-08" })]);
     const half = (await as(db, OWNER, (q) => q<{ id: string }>("select id from public.transactions where transfer_id = $1 limit 1", [t.id])))[0].id;
-    await expect(rpc(db, OWNER, "public.void_transaction($1, $2)", [half, "x"])).rejects.toThrow(/half of a transfer/);
+    await expect(rpc(db, OWNER, "public.delete_transaction($1)", [half])).rejects.toThrow(/half of a transfer/);
     await expect(rpc(db, OWNER, "public.reverse_transaction($1, $2, $3)", [half, "x", "2026-11-08"])).rejects.toThrow(/half of a transfer/);
     await expect(rpc(db, OWNER, "public.classify_entry($1, $2::jsonb)", [half, j({ nature: "income" })])).rejects.toThrow(/transfer/);
-    await rpc(db, OWNER, "public.void_transfer($1, $2)", [t.id, "Mistake"]);
+    await rpc(db, OWNER, "public.delete_transfer($1)", [t.id]);
     await expectBooks({ cash: 2950, bank: 6870, debtors: 5199, creditors: 1000, profit: 3050 });
   });
 
@@ -177,7 +177,7 @@ describe("the new entries stay whole", () => {
   it("voiding one side of a party-to-party settle voids both", async () => {
     const s = await rpc<{ id: string }>(db, OWNER, "public.record_party_transfer($1::jsonb)", [j({ workspace_id: ws, from_contractor_id: people.Sumit, to_contractor_id: people.Dad, amount: "200", txn_date: "2026-11-08" })]);
     const side = (await as(db, OWNER, (q) => q<{ id: string }>("select id from public.settlements where contra_id = $1 limit 1", [s.id])))[0].id;
-    await rpc(db, OWNER, "public.void_settlement($1, $2)", [side, "Wrong"]);
+    await rpc(db, OWNER, "public.delete_settlement($1)", [side]);
     await expectBooks({ cash: 2950, bank: 6870, debtors: 5199, creditors: 1000, profit: 3050 });
   });
 

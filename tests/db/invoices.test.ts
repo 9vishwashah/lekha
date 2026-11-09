@@ -205,7 +205,7 @@ describe("the ledger", () => {
     await pay(db, id, { amount: "1000" });
     const rows = await as(db, OWNER, (q) => q<{ id: string; kind: string }>("select id, kind from public.transactions where ledger_id = $1", [ledger]));
     for (const r of rows) {
-      await expect(rpc(db, OWNER, "public.void_transaction($1, $2)", [r.id, "Oops"])).rejects.toThrow(/belongs to invoice/);
+      await expect(rpc(db, OWNER, "public.delete_transaction($1)", [r.id])).rejects.toThrow(/belongs to invoice/);
       await expect(rpc(db, OWNER, "public.reverse_transaction($1, $2, $3)", [r.id, "Oops", "2026-11-01"])).rejects.toThrow(/belongs to invoice/);
     }
     const receipt = rows.find((r) => r.kind === "regular")!;

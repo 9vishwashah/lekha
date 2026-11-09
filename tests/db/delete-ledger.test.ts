@@ -63,11 +63,10 @@ describe("deleting a ledger", () => {
   it("refuses while an expense paid from it still counts, then allows once it is voided", async () => {
     const wallet = await ledger({ wallet_kind: "cash" });
     const e = await rpc<{ id: string }>(db, OWNER, "public.create_expense($1::jsonb)", [j({ workspace_id: ws, category_id: category, expense_date: "2026-10-03", title: "Tea", amount: "50", ledger_id: wallet })]);
-    await expect(del(wallet, await nameOf(wallet))).rejects.toThrow(/Void them in Expenses/);
-    await rpc(db, OWNER, "public.void_expense($1, $2)", [e.id, "Wrong"]);
+    await expect(del(wallet, await nameOf(wallet))).rejects.toThrow(/Delete them in Expenses/);
+    await rpc(db, OWNER, "public.delete_expense($1)", [e.id]);
     await del(wallet, await nameOf(wallet));
-    const kept = await one<{ ledger_id: string | null; status: string }>("select ledger_id, status from public.expenses where id = $1", [e.id]);
-    expect(kept).toEqual({ ledger_id: null, status: "void" }); // the void record stays, unlinked
+    expect(await one("select id from public.expenses where id = $1", [e.id])).toBeUndefined();
   });
 
   it("refuses while an advance, a client payment or a split depends on it", async () => {

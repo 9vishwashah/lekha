@@ -90,7 +90,7 @@ describe("TDS deducted on an invoice payment", () => {
     const id = await invoice(ledger);
     const p = await pay(id, { amount: "1170000", tds_deducted: "10000" });
     const t = await one<{ tds_transaction_id: string }>("select tds_transaction_id from public.invoice_payments where id = $1", [p.id]);
-    await expect(rpc(db, OWNER, "public.void_transaction($1, $2)", [t.tds_transaction_id, "x"])).rejects.toThrow(/TDS on an invoice payment|invoice/);
+    await expect(rpc(db, OWNER, "public.delete_transaction($1)", [t.tds_transaction_id])).rejects.toThrow(/TDS on an invoice payment|invoice/);
   });
 
   it("a negative TDS is refused", async () => {

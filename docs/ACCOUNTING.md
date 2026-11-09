@@ -212,3 +212,19 @@ A client who deducts TDS pays less cash but settles the whole invoice: ₹11,70,
     Dr Bank                      11,70,000
     Dr TDS deducted by client        10,000
     Cr Client (invoice)          11,80,000
+
+## Deleting instead of voiding
+
+Mistakes are deleted, not voided. Every delete removes all the parts of a record in one step and refuses to remove one part alone, so nothing is ever left half there:
+
+| Delete | Also removes |
+| --- | --- |
+| A ledger entry | any reversal of it; for an expense, advance or recovery entry, that record too |
+| An expense | its wallet entry; for a split, every share, your expense and the cash |
+| A share of a split | the whole split (needs workspace write access) |
+| A repayment or client payment | its wallet entry; for a two-person settle, both sides |
+| An advance | its recoveries and adjustments, and all their entries |
+| A transfer | both halves |
+| An invoice payment | its cash entry, its TDS entry and any reversal of them; the invoice reopens |
+
+An entry that belongs to an invoice, split, transfer, expense, advance or client payment cannot be deleted from the ledger on its own: the table refuses and says where to delete it. Issued invoices keep **Cancel**, since an invoice number must stay on record for GST; drafts are deleted. **Reverse** stays for a dated contra, such as a bounced payment or a refund. A correction to a shared expense replaces the old record. The activity log keeps only that something was deleted, by whom and when, never its content. Migration `20261109002400_delete_not_void.sql` removes every entry voided before it, and the content earlier deletes left in the log.

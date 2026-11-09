@@ -14,7 +14,7 @@ import { DateInput } from "@/components/ui/date-picker";
 import { SplitComposer } from "./split-composer";
 import { ShareSheet } from "../share-sheet";
 import { LiveRefresh } from "../live-refresh";
-import { recordRepayment, voidRepayment, voidSharedExpense } from "@/app/(app)/actions/records";
+import { recordRepayment, deleteRepayment, deleteSharedExpense } from "@/app/(app)/actions/records";
 import { expenseEffect } from "@/lib/domain/split";
 import { formatINR, toPaise, tryPaise } from "@/lib/domain/money";
 import { formatDate, formatDateShort, formatDateTime, relativeTime } from "@/lib/domain/dates";
@@ -512,7 +512,6 @@ function ItemSheet({
   onCorrect: (e: SharedExpense) => void;
 }) {
   const router = useRouter();
-  const [reason, setReason] = useState("");
   const [voiding, setVoiding] = useState(false);
   const [pending, start] = useTransition();
   if (!item) return <Sheet open={false} onClose={onClose} title="">{null}</Sheet>;
@@ -523,11 +522,10 @@ function ItemSheet({
 
   const doVoid = () =>
     start(async () => {
-      const res = isExpense ? await voidSharedExpense(item.e.id, ledgerId, reason) : await voidRepayment(item.s.id, ledgerId, reason);
+      const res = isExpense ? await deleteSharedExpense(item.e.id, ledgerId) : await deleteRepayment(item.s.id, ledgerId);
       if (!res.ok) return void toast.error(res.error);
-      toast.success(res.message ?? "Voided");
+      toast.success(res.message ?? "Deleted");
       setVoiding(false);
-      setReason("");
       router.refresh();
       onClose();
     });
@@ -583,7 +581,7 @@ function ItemSheet({
           <div className="grid grid-cols-2 gap-2">
             {isExpense && !item.e.split_group_id && <Button onClick={() => onCorrect(item.e)}>Correct</Button>}
             <Button variant="secondary" onClick={() => setVoiding(true)} className={isExpense && !item.e.split_group_id ? "" : "col-span-2"}>
-              {isExpense && item.e.split_group_id ? "Void whole split" : "Void"}
+              {isExpense && item.e.split_group_id ? "Delete whole split" : "Delete"}
             </Button>
           </div>
         )}
@@ -591,16 +589,15 @@ function ItemSheet({
           <div className="flex flex-col gap-3 rounded-[24px] bg-sunken p-4">
             <p className="text-[15px]">
               {isExpense && item.e.split_group_id
-                ? "This came from one expense, so voiding it removes every person's share, your own share and the cash entry together. Add it again if it needs changing."
-                : "Voiding keeps it in the history and removes it from everyone's balance."}
+                ? "This came from one expense, so deleting it removes every person's share, your own share and the cash entry together, for good. Add it again if it needs changing."
+                : "Deletes it for good and takes it out of everyone's balance. It cannot be undone."}
             </p>
-            <Field label="Reason">{(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus maxLength={300} />}</Field>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setVoiding(false)}>
                 Cancel
               </Button>
-              <Button variant="danger" className="flex-1" disabled={pending || !reason.trim()} onClick={doVoid}>
-                Void
+              <Button variant="danger" className="flex-1" disabled={pending} onClick={doVoid}>
+                Delete for good
               </Button>
             </div>
           </div>

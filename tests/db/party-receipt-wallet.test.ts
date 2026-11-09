@@ -77,7 +77,7 @@ describe("Metro Group pays into Rishabh Sales Creative Bank", () => {
 
   it("voiding a receipt takes it out of both", async () => {
     const t = (await post({ kind: "regular", direction: "in", amount: "500000", wallet_ledger_id: bank })).id;
-    await rpc(db, OWNER, "public.void_transaction($1, $2)", [t, "Wrong"]);
+    await rpc(db, OWNER, "public.delete_transaction($1)", [t]);
     expect(await balance(metro, "party")).toBe(r(1170000));
     expect(await balance(bank, "cashbook")).toBe(0n);
   });
@@ -88,6 +88,25 @@ describe("Metro Group pays into Rishabh Sales Creative Bank", () => {
     await rpc(db, OWNER, "public.classify_entry($1, $2::jsonb)", [t, j({ wallet_ledger_id: bank })]);
     expect(await balance(bank, "cashbook")).toBe(r(200000));
     expect(await balance(metro, "party")).toBe(r(970000));
+  });
+
+  it("GST paid to the Government comes out of the bank in one step", async () => {
+    const before = await books();
+    const owed = await balance(metro, "party");
+    const t = await rpc<{ id: string }>(db, OWNER, "public.record_tax_settlement($1::jsonb)", [
+      j({ ledger_id: metro, txn_date: "2026-02-20", tax_type: "gst", amount: "180000", period_month: "2026-02-01", wallet_ledger_id: bank }),
+    ]);
+    const b = await books();
+    expect(b.wallets.find((w) => w.id === bank)!.balance - before.wallets.find((w) => w.id === bank)!.balance).toBe(-r(180000));
+    expect(before.gstPayable - b.gstPayable).toBe(r(180000));
+    expect(b.pocket).toBe(before.pocket); // nothing paid from outside the wallets
+    expect(b.profit).toBe(before.profit);
+    expect(await balance(metro, "party")).toBe(owed); // tax paid is not something the client owes
+    expect(b.difference).toBe(0n);
+    await rpc(db, OWNER, "public.delete_transaction($1)", [t.id]);
+    const v = await books();
+    expect(v.wallets.find((w) => w.id === bank)!.balance).toBe(before.wallets.find((w) => w.id === bank)!.balance);
+    expect(v.gstPayable).toBe(before.gstPayable);
   });
 
   it("only a cash or bank ledger can be the wallet", async () => {
