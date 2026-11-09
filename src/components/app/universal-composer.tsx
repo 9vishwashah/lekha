@@ -97,6 +97,7 @@ export function UniversalComposer({
   const [person, setPerson] = useState(withClient ?? "");
   const [person2, setPerson2] = useState("");
   const [invoice, setInvoice] = useState("");
+  const [tds, setTds] = useState("");
   const [yourShare, setYourShare] = useState("");
   const [cats, setCats] = useState(categories);
   const [category, setCategory] = useState(categories[0]?.id ?? "");
@@ -144,11 +145,15 @@ export function UniversalComposer({
           { side: "Cr", account: w, note: "Money out", amount: A },
         ];
       case "debtor":
-      case "borrowed":
+      case "borrowed": {
+        // TDS the client deducted on an invoice settles it too, as your credit with the Government.
+        const T = sub === "debtor" && invoice ? (tryPaise(tds) ?? 0n) : 0n;
         return [
           { side: "Dr", account: w, note: "Money in", amount: A },
-          { side: "Cr", account: invoice ? `${who} · invoice` : who, note: sub === "debtor" ? "Owes you less" : "You owe them", amount: A },
+          ...(T > 0n ? [{ side: "Dr" as const, account: "TDS deducted by client", note: "Your credit under Duties & Taxes", amount: T }] : []),
+          { side: "Cr", account: invoice ? `${who} · invoice` : who, note: sub === "debtor" ? "Owes you less" : "You owe them", amount: A + T },
         ];
+      }
       case "income":
         return [
           { side: "Dr", account: w, note: "Money in", amount: A },
@@ -179,7 +184,7 @@ export function UniversalComposer({
     }
     // nameOf and walletName read props only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, sub, splitting, shares, catName, person, person2, wallet, toWallet, invoice, yours]);
+  }, [value, sub, splitting, shares, catName, person, person2, wallet, toWallet, invoice, yours, tds]);
 
   const debit = lines.filter((l) => l.side === "Dr").reduce((t, l) => t + l.amount, 0n);
   const credit = lines.filter((l) => l.side === "Cr").reduce((t, l) => t + l.amount, 0n);
@@ -219,7 +224,7 @@ export function UniversalComposer({
         case "borrowed":
           if (!person) return setError("Choose who");
           if (sub === "debtor" && invoice) {
-            return done(await recordPayment(invoice, { amount: base.amount, paid_on: date, mode: "", reference: "", notes: title, idempotency_key: key, wallet_ledger_id: wallet }));
+            return done(await recordPayment(invoice, { amount: base.amount, paid_on: date, mode: "", reference: "", notes: title, idempotency_key: key, wallet_ledger_id: wallet, tds_deducted: tds }));
           }
           return done(
             await recordClientPayment({ ...base, contractor_id: person, kind: sub === "person" ? "paid" : "received", they_owe: false, txn_date: date, ledger_id: wallet, notes: title }),
@@ -356,6 +361,11 @@ export function UniversalComposer({
                 ))}
               </Select>
             )}
+          </Field>
+        )}
+        {sub === "debtor" && invoice && (
+          <Field label="TDS deducted by client" optional hint="If they paid less because they deducted TDS. It settles the invoice too and becomes your TDS credit; only the cash goes to the wallet.">
+            {(p) => <MoneyInput {...p} value={tds} onChange={(e) => setTds(e.target.value)} placeholder="0" />}
           </Field>
         )}
 

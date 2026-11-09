@@ -204,3 +204,11 @@ Expense categories carry their head (`expense_categories.head`). Materials, Labo
 A cash or bank ledger can set where its plain money in and out usually go (`default_in_nature`, `default_out_nature`). An entry's own head wins; a reversal keeps the head of what it reverses. No ledger gets one automatically: a deposit into Cash in Hand may be capital or a transfer, not income.
 
 A bill attached to a wallet entry counts only when the entry's amount is the bill's figure after TDS (the money that moved): then only the amount before tax is income or cost, and GST and TDS go to Duties & Taxes, as on the Tax page. Otherwise the amount counts as entered and Books flags the entry.
+
+## TDS deducted on an invoice payment
+
+A client who deducts TDS pays less cash but settles the whole invoice: ₹11,70,000 received + ₹10,000 TDS = ₹11,80,000 settled. `invoice_payments.tds_deducted` records the TDS; the invoice counts `amount + tds_deducted` as received, so it reads Paid. Only `amount` reaches the wallet. The TDS becomes TDS deducted by clients under Duties & Taxes. On a client ledger, one non-cash `tds_credit` entry beside the receipt lowers what the client owes by the TDS, so that ledger settles to zero too; it can only change with its payment, and reversing the payment reverses both. Cash plus TDS may not exceed the balance unless confirmed as excess.
+
+    Dr Bank                      11,70,000
+    Dr TDS deducted by client        10,000
+    Cr Client (invoice)          11,80,000

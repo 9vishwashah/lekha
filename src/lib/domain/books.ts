@@ -64,7 +64,7 @@ export interface BooksInput {
   tax: { transaction_id: string; taxable_amount: string; gst_amount: string; tds_amount: string; net_amount?: string }[];
   taxSettlements: { transaction_id: string; tax_type: string }[];
   invoices: { id: string; invoice_no?: string | null; contractor_id: string | null; ledger_id: string | null; status: string; invoice_type: string; invoice_date: string; grand_total: string; tax_total: string; amount_received: string; transaction_id: string | null }[];
-  payments: { amount: string; status: string; transaction_id: string | null }[];
+  payments: { amount: string; status: string; transaction_id: string | null; tds_deducted?: string | number | null }[];
   expenses: { amount: string; expense_date: string; status: string; transaction_id: string | null; split_group_id: string | null; category: string; head?: string }[];
   advances: { id?: string; contractor_id?: string | null; purpose?: string | null; ledger_id: string | null; amount: string; status: string; allocations: { kind: string; amount: string; status: string; alloc_date: string; transaction_id?: string | null }[] }[];
   splitGroups: { total_amount: string; paid_by_contractor_id: string | null; transaction_id: string | null; status: string }[];
@@ -298,6 +298,8 @@ export function computeBooks(everything: BooksInput) {
   }
   for (const p of input.payments) {
     if (p.status === "confirmed" && (!p.transaction_id || !txns.has(p.transaction_id))) unassigned += toPaise(p.amount);
+    // TDS the client deducted settled part of the invoice and is now your credit with the Government.
+    if (p.status === "confirmed") tdsReceivable += toPaise(p.tds_deducted ?? 0);
   }
 
   for (const e of input.expenses) {

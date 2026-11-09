@@ -238,6 +238,7 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
   const { pending, run } = useRun();
   const balance = BigInt(v.balance);
   const [amount, setAmount] = useState(toDecimal(balance).replace(/\.00$/, ""));
+  const [tds, setTds] = useState("");
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("upi");
   const wallet = useWallet(v.wallets, mode);
@@ -246,7 +247,15 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
   const [excess, setExcess] = useState(false);
   const [key] = useState(newKey);
   const paise = tryPaise(amount) ?? 0n;
-  const over = paise > balance;
+  const tdsPaise = tryPaise(tds) ?? 0n;
+  const settled = paise + tdsPaise;
+  const over = settled > balance;
+  // TDS typed in while the amount still reads the full balance: the cash is what is left.
+  const changeTds = (value: string) => {
+    const before = tryPaise(tds) ?? 0n;
+    if (paise === balance - before) setAmount(toDecimal(balance - (tryPaise(value) ?? 0n)).replace(/\.00$/, ""));
+    setTds(value);
+  };
   return (
     <Sheet
       open
@@ -258,9 +267,9 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
           size="lg"
           className="w-full"
           disabled={pending || paise <= 0n || (over && !excess)}
-          onClick={() => run(() => recordPayment(v.id, { amount, paid_on: date, mode: mode as "upi", reference, notes, allow_excess: excess, idempotency_key: key, wallet_ledger_id: wallet.value }), onClose)}
+          onClick={() => run(() => recordPayment(v.id, { amount, paid_on: date, mode: mode as "upi", reference, notes, allow_excess: excess, idempotency_key: key, wallet_ledger_id: wallet.value, tds_deducted: tds }), onClose)}
         >
-          {pending ? "Saving…" : `Record ${formatINR(paise)}`}
+          {pending ? "Saving…" : tdsPaise > 0n ? `Record ${formatINR(paise)} + ${formatINR(tdsPaise)} TDS` : `Record ${formatINR(paise)}`}
         </Button>
       }
     >
@@ -280,11 +289,14 @@ function PaymentSheet({ v, today, onClose }: { v: InvoiceInfo; today: string; on
           </div>
           <div className="flex justify-between py-2.5 font-semibold">
             <dt>New balance</dt>
-            <dd className="num">{formatINR(over ? 0n : balance - paise)}</dd>
+            <dd className="num">{formatINR(over ? 0n : balance - settled)}</dd>
           </div>
         </dl>
         <Field label="Amount received">{(p) => <MoneyInput {...p} big value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />}</Field>
-        {over && <Checkbox label={`Yes, ${formatINR(paise - balance)} more than the balance was received`} checked={excess} onChange={(e) => setExcess(e.target.checked)} />}
+        <Field label="TDS deducted by client" optional hint="If they paid less because they deducted TDS. It settles the invoice too, and becomes your TDS credit; only the cash goes to the bank.">
+          {(p) => <MoneyInput {...p} value={tds} onChange={(e) => changeTds(e.target.value)} placeholder="0" />}
+        </Field>
+        {over && <Checkbox label={`Yes, ${formatINR(settled - balance)} more than the balance was settled`} checked={excess} onChange={(e) => setExcess(e.target.checked)} />}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Payment date">{(p) => <DateInput {...p} value={date} onChange={setDate} />}</Field>
           <Field label="Mode">
@@ -413,6 +425,7 @@ export function PaymentHistory({ invoiceId, payments, canWrite }: { invoiceId: s
               <div className="text-[15px] font-medium">
                 {formatDate(p.paid_on)}
                 {p.mode ? ` · ${paymentModeLabel(p.mode)}` : ""}
+                {Number(p.tds_deducted) > 0 ? ` · + ${formatINR(toPaise(p.tds_deducted))} TDS` : ""}
               </div>
               <div className="truncate text-[13px] text-ink-3">
                 {[p.reference, p.source === "client_claim" ? "Confirmed from client note" : null, p.transaction_id ? "In ledger" : null, p.notes].filter(Boolean).join(" · ") || "Recorded by hand"}

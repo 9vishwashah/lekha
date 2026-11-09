@@ -348,6 +348,7 @@ const paymentSchema = z.object({
   allow_excess: z.boolean().optional(),
   idempotency_key: z.string().min(8).max(120),
   wallet_ledger_id: uuid.or(z.literal("")),
+  tds_deducted: z.string().trim().regex(/^(\d{1,12}(\.\d{1,2})?)?$/, "Enter the TDS like 10000").optional(),
 });
 
 export async function recordPayment(id: string, input: z.input<typeof paymentSchema>): Promise<ActionResult> {

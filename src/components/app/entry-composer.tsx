@@ -13,6 +13,7 @@ import { computeTax, explainTax } from "@/lib/domain/tax";
 import { formatINR, tryPaise } from "@/lib/domain/money";
 import { NATURES, PAYMENT_MODES, type TaxDetail, type Txn } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { BILL_DIRECTION } from "@/lib/domain/ledger";
 import { useWallet, WalletSelect, type WalletOption } from "@/components/app/wallet-select";
 
 type Mode = "payment" | "bill" | "tax";
@@ -83,7 +84,9 @@ export function EntryComposer({
   const [description, setDescription] = useState(editing?.description ?? "");
   const [counterparty, setCounterparty] = useState(editing?.counterparty ?? "");
   const [paymentMode, setPaymentMode] = useState<string>(editing?.payment_mode ?? "");
-  const wallet = useWallet(wallets, paymentMode);
+  // Money in or out of a client ledger goes through a wallet. With no payment mode chosen it
+  // defaults to the bank, so a receipt is never left outside Cash and Bank by accident.
+  const wallet = useWallet(wallets, paymentMode, "", wallets.find((w) => w.kind === "bank")?.id ?? wallets[0]?.id ?? "");
   const [nature, setNature] = useState("");
   const [reference, setReference] = useState(editing?.reference_no ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
@@ -212,8 +215,9 @@ export function EntryComposer({
     });
   };
 
-  const inLabel = mode === "bill" ? "Bill to party" : "Money in";
-  const outLabel = mode === "bill" ? "Bill from party" : "Money out";
+  // A bill to the party is recorded "out" (they owe you more); a bill from them "in".
+  const inLabel = mode === "bill" ? "Bill from party" : "Money in";
+  const outLabel = mode === "bill" ? "Bill to party" : "Money out";
 
   return (
     <Sheet
@@ -264,17 +268,24 @@ export function EntryComposer({
             size="lg"
             value={direction}
             onChange={setDirection}
-            options={[
-              { value: "in", label: inLabel, tone: "in" },
-              { value: "out", label: outLabel, tone: "out" },
-            ]}
+            options={
+              mode === "bill"
+                ? [
+                    { value: BILL_DIRECTION.toParty, label: outLabel, tone: "in" },
+                    { value: BILL_DIRECTION.fromParty, label: inLabel, tone: "out" },
+                  ]
+                : [
+                    { value: "in", label: inLabel, tone: "in" },
+                    { value: "out", label: outLabel, tone: "out" },
+                  ]
+            }
           />
         )}
         {mode === "bill" && (
           <p className="-mt-2 text-[13px] text-ink-3">
-            {direction === "out"
-              ? "A bill the party raised on you. Recorded without moving cash; it increases what you owe them."
-              : "A bill you raised on the party. Recorded without moving cash; it increases what they owe you."}
+            {direction === BILL_DIRECTION.toParty
+              ? "A bill you raised on the party. No money moves; it increases what they owe you and counts as income (before GST)."
+              : "A bill the party raised on you. No money moves; it increases what you owe them and counts as a cost (before GST)."}
           </p>
         )}
 
@@ -284,6 +295,16 @@ export function EntryComposer({
               <MoneyInput {...p} big value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" autoFocus={!editing} required />
             )}
           </Field>
+        )}
+        {!editing && mode === "payment" && ledger.perspective === "party" && (
+          <WalletSelect
+            wallets={wallets}
+            value={wallet.value}
+            onChange={wallet.setValue}
+            label={direction === "in" ? "Received into wallet (Bank / Cash)" : "Paid from wallet (Bank / Cash)"}
+            noneLabel="None (this ledger only)"
+            hint="The same entry shows in that wallet too, so its balance moves with this one. Edit, void or reverse it here and both follow."
+          />
         )}
 
         {showTax && (
@@ -432,15 +453,6 @@ export function EntryComposer({
           <Checkbox label="Attach bill details (GST / TDS)" checked={withBill} onChange={(e) => setWithBill(e.target.checked)} />
         )}
 
-        {!editing && mode === "payment" && ledger.perspective === "party" && (
-          <WalletSelect
-            wallets={wallets}
-            value={wallet.value}
-            onChange={wallet.setValue}
-            label={direction === "in" ? "Received into" : "Paid from"}
-            hint="Which of your wallets the money went through. Choose a payment mode to fill this in."
-          />
-        )}
         {!editing && mode === "payment" && ledger.perspective === "cashbook" && (
           <Field label="What was this?" optional hint="Income and expenses count in Profit & Loss. Left empty, it takes the meaning set in this ledger's settings, or waits in Books.">
             {(p) => (

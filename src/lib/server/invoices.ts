@@ -147,6 +147,7 @@ export interface PaymentRow {
   source: "manual" | "client_claim";
   status: "confirmed" | "reversed";
   transaction_id: string | null;
+  tds_deducted: string | number;
   reversal_kind: string | null;
   reversal_reason: string | null;
   reversed_at: string | null;

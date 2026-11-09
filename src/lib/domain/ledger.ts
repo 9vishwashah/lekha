@@ -18,6 +18,7 @@ export type TxnKind =
   | "advance_given"
   | "advance_recovery"
   | "advance_adjustment"
+  | "tds_credit"
   | "expense"
   | "reversal";
 export type Perspective = "cashbook" | "party";
@@ -68,6 +69,14 @@ export function compareRows(a: LedgerRow, b: LedgerRow): number {
   if (a.txn_date !== b.txn_date) return a.txn_date < b.txn_date ? -1 : 1;
   return a.seq - b.seq;
 }
+
+/**
+ * Which way a bill is recorded on a ledger with someone:
+ *   to the party   (a bill you raise on them)  = "out": they owe you more   (Dr party, income)
+ *   from the party (a bill they raise on you)  = "in":  you owe them more   (Cr party, cost)
+ * The entry form, the books and every statement read bills through this.
+ */
+export const BILL_DIRECTION = { toParty: "out", fromParty: "in" } as const satisfies Record<string, Direction>;
 
 /** Signed effect of a row on the ledger balance, or null when it does not count. */
 export function balanceEffect(row: LedgerRow, perspective: Perspective): Paise | null {
@@ -167,6 +176,7 @@ export const KIND_LABEL: Record<TxnKind, string> = {
   advance_given: "Advance given",
   advance_recovery: "Advance recovered",
   advance_adjustment: "Advance adjusted",
+  tds_credit: "TDS deducted by client",
   expense: "Expense",
   reversal: "Reversal",
 };
