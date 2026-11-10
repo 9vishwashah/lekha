@@ -10,6 +10,25 @@ import { LedgerScreen } from "@/components/app/ledger-screen";
 import { PersonalLedger } from "@/components/app/personal/personal-ledger";
 import { advancesWithPositions } from "@/lib/server/workspace-data";
 
+async function optional<T>(p: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await p;
+  } catch (e) {
+    console.error("ledger page: optional data failed", e);
+    return fallback;
+  }
+}
+
+/** Search matches words in the text fields, and amounts typed with or without commas or ₹. */
+function matchesSearch(row: { description: string | null; counterparty: string | null; reference_no: string | null; voucher_no: string | null; amount: unknown }, q: string, qAmount: string) {
+  const text = [row.description, row.counterparty, row.reference_no, row.voucher_no].some((v) => v != null && String(v).toLowerCase().includes(q));
+  if (text) return true;
+  if (!qAmount || !/^\d+(\.\d*)?$/.test(qAmount)) return false;
+  const amount = String(row.amount ?? "");
+  const plain = amount.includes(".") ? amount.replace(/\.?0+$/, "") : amount;
+  return amount.includes(qAmount) || plain.includes(qAmount);
+}
+
 export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
   const userId = await requireUser();
   const { id } = await props.params;
@@ -18,26 +37,29 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
   const today = todayISO();
   // One parallel round: everything this screen might need is requested at once, and RLS decides
   // what comes back (tax rows, advances and member names are simply empty when not permitted).
+  // Only the ledger and its entries are essential; the extras fall back to empty so a slow side
+  // query never replaces the whole ledger with an error page.
   const [ledger, txns, tax, names, advances, personal, memberships] = await Promise.all([
     getLedger(db, id),
     getLedgerTxns(db, id),
-    getLedgerTax(db, id),
-    peopleNames(db, null, id),
-    advancesWithPositions(db, null, today),
-    getPersonalLedger(db, id),
-    getMemberships(),
+    optional(getLedgerTax(db, id), new Map()),
+    optional(peopleNames(db, null, id), new Map<string, string>()),
+    optional(advancesWithPositions(db, null, today), []),
+    getPersonalLedger(db, id).catch((e: unknown) => e as Error),
+    optional(getMemberships(), []),
   ]);
   const access = await ledgerAccess(ledger);
   if (!access) notFound();
 
   if (ledger.ledger_type === "personal") {
+    if (personal instanceof Error) throw personal;
     return (
       <PersonalLedger ledger={ledger} access={access} userId={userId} today={today} openAdd={params.add === "1"} data={personal} names={names} />
     );
   }
 
   const membership = memberships.find((m) => m.workspace.id === ledger.workspace_id);
-  const wallets = membership ? walletsOf(await listLedgers(db, ledger.workspace_id)) : [];
+  const wallets = membership ? walletsOf(await optional(listLedgers(db, ledger.workspace_id), [])) : [];
 
   const range = {
     from: params.from && isISODate(params.from) ? params.from : undefined,
@@ -50,6 +72,7 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
 
   // Filters only hide rows; balances still come from every entry.
   const q = (params.q ?? "").trim().toLowerCase();
+  const qAmount = q.replace(/[₹,\s]/g, "");
   const dir = params.dir === "in" || params.dir === "out" ? params.dir : null;
   const status = ["posted", "draft", "void"].includes(params.status) ? params.status : null;
   const lines = statement.lines
@@ -58,7 +81,7 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
     .filter(
       ({ row }) =>
         !q ||
-        [row.description, row.counterparty, row.reference_no, row.voucher_no, row.amount].some((v) => v?.toLowerCase().includes(q)),
+        matchesSearch(row, q, qAmount),
     )
     .map(({ row, counted, running }) => ({ txn: row, counted, running: toDecimal(running), reversed: reversed.has(row.id) }));
 

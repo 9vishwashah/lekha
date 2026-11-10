@@ -35,6 +35,10 @@ export function LiveRefresh({ ledgerId, tables }: { ledgerId: string; tables: st
         refresh,
       );
     }
+    // A wallet also changes when a party ledger's entry names it as the wallet the money went through.
+    if (tables.includes("transactions")) {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table: "transactions", filter: `wallet_ledger_id=eq.${ledgerId}` }, refresh);
+    }
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") setState("live");
       else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") setState("offline");

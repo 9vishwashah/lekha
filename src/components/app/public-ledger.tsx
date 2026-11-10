@@ -46,7 +46,7 @@ export function CashView({
         <dl className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
           {options.show_balance && (
             <div>
-              <dt className={cn("text-[13px]", wSub)}>Opening{ledger.opening_balance_date ? ` (${formatDate(ledger.opening_balance_date)})` : ""}</dt>
+              <dt className={cn("text-[13px]", wSub)}>Opening{ledger.opening_balance_date && s.opening !== 0n ? ` (${formatDate(ledger.opening_balance_date)})` : ""}</dt>
               <dd><Amount value={s.opening} size="sm" /></dd>
             </div>
           )}
@@ -65,10 +65,10 @@ export function CashView({
         <p className="rounded-[var(--radius-card)] border-2 border-dashed border-line p-8 text-center text-ink-2">No entries yet.</p>
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
-          {rows.map(({ row, counted, running }) => {
+          {rows.map(({ row, counted, running }, i) => {
             const t = row;
             return (
-              <li key={t.voucher_no} className="flex flex-col gap-1 px-4 py-3.5 sm:px-5">
+              <li key={`${t.voucher_no}-${i}`} className="flex flex-col gap-1 px-4 py-3.5 sm:px-5">
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{t.description || t.counterparty || KIND_LABEL[t.kind]}</div>
