@@ -6,7 +6,7 @@ import { WorkspaceSwitcher } from "@/components/app/workspace-switcher";
 import { Logo } from "@/components/app/logo";
 import { SwipeNav } from "@/components/app/swipe-nav";
 import { PendingNavProvider } from "@/components/app/pending-nav";
-import { WORKSPACE_COOKIE, getCollaborations, getMyProfile, loadMemberships } from "@/lib/server/context";
+import { WORKSPACE_COOKIE, getCollaborations, getMyProfile, loadMemberships, requireUser, sharedWithMeHere } from "@/lib/server/context";
 import { AccountMenu } from "@/components/app/account-menu";
 import { avatarUrl } from "@/lib/avatar";
 import { ServiceProblem } from "@/components/app/service-problem";
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const missing = missingConfig();
   if (missing.length) return <SetupRequired missing={missing} />;
-  const [loaded, shared, profile] = await Promise.all([loadMemberships(), getCollaborations(), getMyProfile()]);
+  const [loaded, shared, profile, userId] = await Promise.all([loadMemberships(), getCollaborations(), getMyProfile(), requireUser()]);
   if (loaded.problem) return <ServiceProblem kind={loaded.problem.kind} code={loaded.problem.code} />;
   // Everyone picks a username once; it is how people add each other.
   if (!profile?.username) redirect("/onboarding");
@@ -28,6 +28,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const current = memberships.find((m) => m.workspace.id === chosen) ?? memberships[0];
   const hasWorkspace = memberships.length > 0;
   const options = memberships.map((m) => ({ id: m.workspace.id, name: m.workspace.name, role: m.role }));
+  const sharedHere = sharedWithMeHere(memberships, current?.workspace.id, userId, shared);
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[1440px]">
@@ -37,7 +38,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </Link>
         {hasWorkspace && <WorkspaceSwitcher current={current.workspace.id} options={options} />}
         {hasWorkspace && <QuickAddButton className="w-full" />}
-        <Sidebar hasWorkspace={hasWorkspace} sharedCount={shared.length} />
+        <Sidebar hasWorkspace={hasWorkspace} showShared={sharedHere.visible} sharedCount={sharedHere.items.length} />
         <div className="mt-auto">
           <AccountMenu name={me.name} username={me.username} photo={me.photo} />
         </div>
@@ -59,7 +60,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </SwipeNav>
         </main>
       </div>
-      <BottomNav hasWorkspace={hasWorkspace} />
+      <BottomNav hasWorkspace={hasWorkspace} showShared={sharedHere.visible} />
     </div>
   );
 }

@@ -1,4 +1,6 @@
-import { getCollaborations, getMemberships, requireUser } from "@/lib/server/context";
+import { cookies } from "next/headers";
+import { WORKSPACE_COOKIE, getCollaborations, getMemberships, requireUser, sharedWithMeHere } from "@/lib/server/context";
+import { SwitchToWorkspace } from "./switch";
 import { loadSharedAccountRows, sharedAccountDebts } from "@/lib/server/people";
 import { userDb } from "@/lib/supabase/server";
 import { EmptyState, PageHeader } from "@/components/ui/bits";
@@ -9,7 +11,23 @@ import { relativeTime } from "@/lib/domain/dates";
 export const metadata = { title: "Shared with me" };
 
 export default async function SharedPage() {
-  const [shared, memberships, userId, db] = await Promise.all([getCollaborations(), getMemberships(), requireUser(), userDb()]);
+  const [all, memberships, userId, db, jar] = await Promise.all([getCollaborations(), getMemberships(), requireUser(), userDb(), cookies()]);
+  const chosen = jar.get(WORKSPACE_COOKIE)?.value;
+  const currentId = (memberships.find((m) => m.workspace.id === chosen) ?? memberships[0])?.workspace.id;
+  const here = sharedWithMeHere(memberships, currentId, userId, all);
+  const shared = here.items;
+  if (!here.visible) {
+    return (
+      <div>
+        <PageHeader title="Shared with me" />
+        <EmptyState
+          title="Shared ledgers live in your own workspace"
+          body="Ledgers people share with you are yours, so they stay out of businesses you were added to."
+          action={here.home ? <SwitchToWorkspace id={here.home.id} name={here.home.name} /> : undefined}
+        />
+      </div>
+    );
+  }
   const accounts = new Map(sharedAccountDebts(await loadSharedAccountRows(db), userId).map((a) => [a.ledger.id, a]));
   const position = (ledgerId: string, canCreate: boolean) => {
     const account = accounts.get(ledgerId);

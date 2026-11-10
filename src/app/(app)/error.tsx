@@ -28,7 +28,8 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
       };
     }
     console.error(error);
-    setShow(true);
+    const t = setTimeout(() => setShow(true), 0);
+    return () => clearTimeout(t);
   }, [error, retry]);
 
   if (!show) {

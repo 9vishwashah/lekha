@@ -32,7 +32,7 @@ const QUICK_ADD = [
 
 const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; sharedCount: number }) {
+export function Sidebar({ hasWorkspace, showShared, sharedCount }: { hasWorkspace: boolean; showShared: boolean; sharedCount: number }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Main" className="flex flex-col gap-1">
@@ -51,7 +51,8 @@ export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; 
             {label}
           </IntentLink>
         ))}
-      {/* Always listed: what other people share with you, even before anything is shared. */}
+      {/* Listed in your own workspace (even before anything is shared), not in a business you joined. */}
+      {showShared && (
       <IntentLink
         href="/shared"
         aria-current={isActive(pathname, "/shared") ? "page" : undefined}
@@ -64,6 +65,7 @@ export function Sidebar({ hasWorkspace, sharedCount }: { hasWorkspace: boolean; 
         Shared with me
         {sharedCount > 0 && <span className="ml-auto text-xs opacity-70">{sharedCount}</span>}
       </IntentLink>
+      )}
     </nav>
   );
 }
@@ -111,7 +113,7 @@ function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 /** Floating pill navigation for phones. Five slots: four places and the add button. */
-export function BottomNav({ hasWorkspace }: { hasWorkspace: boolean }) {
+export function BottomNav({ hasWorkspace, showShared }: { hasWorkspace: boolean; showShared: boolean }) {
   const pathname = usePathname();
   const [addOpen, setAddOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -161,7 +163,7 @@ export function BottomNav({ hasWorkspace }: { hasWorkspace: boolean }) {
       <QuickAddSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="More">
         <ul className="grid grid-cols-2 gap-2 pb-2">
-          {[...PRIMARY.slice(3), { href: "/shared", label: "Shared with me", icon: Share2 }].map(({ href, label, icon: Icon }) => (
+          {[...PRIMARY.slice(3), ...(showShared ? [{ href: "/shared", label: "Shared with me", icon: Share2 }] : [])].map(({ href, label, icon: Icon }) => (
             <li key={href}>
               <IntentLink
                 href={href}

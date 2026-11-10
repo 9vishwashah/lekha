@@ -7,6 +7,7 @@ import { buildStatement, describeBalance, type Perspective } from "@/lib/domain/
 import { toDecimal, toPaise } from "@/lib/domain/money";
 import { isISODate, todayISO } from "@/lib/domain/dates";
 import { LedgerScreen } from "@/components/app/ledger-screen";
+import { matchesSearch } from "@/lib/domain/search";
 import { PersonalLedger } from "@/components/app/personal/personal-ledger";
 import { advancesWithPositions } from "@/lib/server/workspace-data";
 
@@ -17,16 +18,6 @@ async function optional<T>(p: Promise<T>, fallback: T): Promise<T> {
     console.error("ledger page: optional data failed", e);
     return fallback;
   }
-}
-
-/** Search matches words in the text fields, and amounts typed with or without commas or ₹. */
-function matchesSearch(row: { description: string | null; counterparty: string | null; reference_no: string | null; voucher_no: string | null; amount: unknown }, q: string, qAmount: string) {
-  const text = [row.description, row.counterparty, row.reference_no, row.voucher_no].some((v) => v != null && String(v).toLowerCase().includes(q));
-  if (text) return true;
-  if (!qAmount || !/^\d+(\.\d*)?$/.test(qAmount)) return false;
-  const amount = String(row.amount ?? "");
-  const plain = amount.includes(".") ? amount.replace(/\.?0+$/, "") : amount;
-  return amount.includes(qAmount) || plain.includes(qAmount);
 }
 
 export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
@@ -72,7 +63,6 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
 
   // Filters only hide rows; balances still come from every entry.
   const q = (params.q ?? "").trim().toLowerCase();
-  const qAmount = q.replace(/[₹,\s]/g, "");
   const dir = params.dir === "in" || params.dir === "out" ? params.dir : null;
   const status = ["posted", "draft", "void"].includes(params.status) ? params.status : null;
   const lines = statement.lines
@@ -81,7 +71,7 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
     .filter(
       ({ row }) =>
         !q ||
-        matchesSearch(row, q, qAmount),
+        matchesSearch(row, q),
     )
     .map(({ row, counted, running }) => ({ txn: row, counted, running: toDecimal(running), reversed: reversed.has(row.id) }));
 

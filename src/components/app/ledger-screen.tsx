@@ -4,9 +4,7 @@ import { useCallback, useEffect, useMemo, useOptimistic, useState, useTransition
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowDownLeft,
   ArrowLeft,
-  ArrowUpRight,
   Download,
   FileSpreadsheet,
   FileText,
@@ -29,10 +27,11 @@ import { ShareSheet } from "./share-sheet";
 import { LiveRefresh } from "./live-refresh";
 import { KIND_LABEL } from "@/lib/domain/ledger";
 import { toPaise } from "@/lib/domain/money";
-import { formatDate, formatDateShort, relativeTime } from "@/lib/domain/dates";
+import { formatDate, relativeTime } from "@/lib/domain/dates";
 import type { LedgerAccess } from "@/lib/server/access";
 import type { TaxDetail, Txn } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { DateTile } from "@/components/ui/date-tile";
 
 interface Line {
   txn: Txn;
@@ -145,11 +144,6 @@ export function LedgerScreen({
 
   // Newest first for reading; running balances were computed oldest first on the server.
   const ordered = useMemo(() => [...lines].reverse(), [lines]);
-  const groups = useMemo(() => {
-    const map = new Map<string, Line[]>();
-    for (const l of ordered) map.set(l.txn.txn_date, [...(map.get(l.txn.txn_date) ?? []), l]);
-    return [...map.entries()];
-  }, [ordered]);
 
   const exportHref = (format: string) => {
     const qs = new URLSearchParams({ format });
@@ -361,24 +355,16 @@ export function LedgerScreen({
           </div>
         ) : (
           <>
-            {/* Phones: cards grouped by day */}
-            <div className="flex flex-col gap-5 md:hidden">
-              {groups.map(([date, items]) => (
-                <section key={date} aria-label={formatDate(date)}>
-                  <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-ink-3">{formatDateShort(date, today)}</h3>
-                  <ul className="divide-y divide-line overflow-hidden rounded-[24px] bg-surface ring-1 ring-inset ring-line/70">
-                    {items.map((l) => (
+            {/* Phones: one card per entry, newest first */}
+            <ul className="flex flex-col gap-2 md:hidden">
+                    {ordered.map((l) => (
                       <li key={l.txn.id}>
-                        <button type="button" onClick={() => setSelected(l)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-white">
-                          <span
-                            className={cn(
-                              "inline-flex size-10 shrink-0 items-center justify-center rounded-full",
-                              l.txn.direction === "in" ? "bg-[#d9eae5] text-in" : "bg-[#f6dcda] text-out",
-                            )}
-                            aria-hidden
-                          >
-                            {l.txn.direction === "in" ? <ArrowDownLeft className="size-4" /> : <ArrowUpRight className="size-4" />}
-                          </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(l)}
+                          className="flex w-full items-center gap-3 rounded-3xl bg-surface p-4 text-left ring-1 ring-inset ring-line/70 active:bg-white"
+                        >
+                          <DateTile date={l.txn.txn_date} today={today} direction={l.txn.direction} />
                           <span className="min-w-0 flex-1">
                             <span className={cn("block truncate text-[15px] font-medium", l.txn.status === "void" && "line-through opacity-50")}>
                               {l.txn.description || l.txn.counterparty || KIND_LABEL[l.txn.kind]}
@@ -401,10 +387,7 @@ export function LedgerScreen({
                         </button>
                       </li>
                     ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
+            </ul>
 
             {/* Larger screens: a proper ledger table */}
             <div className="hidden overflow-hidden rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70 md:block">

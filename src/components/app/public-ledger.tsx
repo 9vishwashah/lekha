@@ -7,6 +7,9 @@ import { formatDate, formatDateShort } from "@/lib/domain/dates";
 import { Amount, Money } from "@/components/ui/amount";
 import { Avatar, Badge } from "@/components/ui/bits";
 import { cn } from "@/lib/cn";
+import { DateTile } from "@/components/ui/date-tile";
+import { SharedSearch } from "@/components/app/shared-search";
+import { searchText } from "@/lib/domain/search";
 
 /*
  * Read-only statement views of one ledger, as seen through a share link or an open invitation.
@@ -64,16 +67,20 @@ export function CashView({
       {rows.length === 0 ? (
         <p className="rounded-[var(--radius-card)] border-2 border-dashed border-line p-8 text-center text-ink-2">No entries yet.</p>
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
-          {rows.map(({ row, counted, running }, i) => {
+        <SharedSearch
+          items={rows.map(({ row, counted, running }, i) => {
             const t = row;
-            return (
-              <li key={`${t.voucher_no}-${i}`} className="flex flex-col gap-1 px-4 py-3.5 sm:px-5">
-                <div className="flex items-start gap-3">
+            return {
+              key: `${t.voucher_no}-${i}`,
+              text: searchText(t),
+              node: (
+              <li key={`${t.voucher_no}-${i}`} className="flex flex-col gap-2 rounded-3xl bg-surface p-4 ring-1 ring-inset ring-line/70">
+                <div className="flex items-center gap-3">
+                  <DateTile date={t.txn_date} today={today} direction={t.direction} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{t.description || t.counterparty || KIND_LABEL[t.kind]}</div>
                     <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-ink-3">
-                      {formatDateShort(t.txn_date, today)} · {t.voucher_no}
+                      {t.voucher_no}
                       {t.counterparty && t.description && ` · ${t.counterparty}`}
                       {t.reference_no && ` · Ref ${t.reference_no}`}
                       {t.kind !== "regular" && <Badge className="h-5">{KIND_LABEL[t.kind]}</Badge>}
@@ -81,7 +88,6 @@ export function CashView({
                   </div>
                   <div className="text-right">
                     <Money value={toPaise(t.amount)} tone={t.direction === "in" ? "in" : "out"} className="block font-semibold" />
-                    <span className="text-[12px] text-ink-3">{t.direction === "in" ? "credit" : "debit"}</span>
                     {options.show_balance && options.show_running_balance && counted && (
                       <Money value={running} className="block text-[12px] text-ink-3" />
                     )}
@@ -95,9 +101,10 @@ export function CashView({
                   </div>
                 )}
               </li>
-            );
+              ),
+            };
           })}
-        </ul>
+        />
       )}
     </>
   );

@@ -111,7 +111,7 @@ export const getCollaborations = cache(async () => {
   const db = await userDb();
   const { data } = await db
     .from("ledger_collaborators")
-    .select("id, ledger_id, participant_id, can_create, can_edit_own, can_edit_all, can_view_tax, can_attach, ledger:ledgers(id, name, ledger_type, color, last_activity_at)")
+    .select("id, ledger_id, participant_id, can_create, can_edit_own, can_edit_all, can_view_tax, can_attach, ledger:ledgers(id, workspace_id, name, ledger_type, color, last_activity_at)")
     .eq("user_id", userId)
     .eq("status", "active");
   return (data ?? []) as unknown as {
@@ -123,9 +123,28 @@ export const getCollaborations = cache(async () => {
     can_edit_all: boolean;
     can_view_tax: boolean;
     can_attach: boolean;
-    ledger: { id: string; name: string; ledger_type: string; color: string; last_activity_at: string } | null;
+    ledger: { id: string; workspace_id: string; name: string; ledger_type: string; color: string; last_activity_at: string } | null;
   }[];
 });
+
+/**
+ * "Shared with me" belongs to the person, not to a business they were added to. It shows in a
+ * workspace they own; inside someone else's workspace (where they are an admin or member) it is
+ * hidden. Someone who owns no workspace sees it everywhere. Ledgers of a workspace they already
+ * belong to are not "shared with them" and are left out.
+ */
+export function sharedWithMeHere(
+  memberships: { workspace: { id: string; name: string; owner_user_id: string } }[],
+  currentId: string | undefined,
+  userId: string,
+  shared: Awaited<ReturnType<typeof getCollaborations>>,
+) {
+  const own = memberships.filter((m) => m.workspace.owner_user_id === userId);
+  const visible = !currentId || own.length === 0 || own.some((m) => m.workspace.id === currentId);
+  const mine = new Set(memberships.map((m) => m.workspace.id));
+  const items = shared.filter((s) => s.ledger && !mine.has(s.ledger.workspace_id));
+  return { visible, items: visible ? items : [], home: own[0]?.workspace ?? null };
+}
 
 /**
  * The active workspace for this request. The cookie only selects among workspaces the user is a
