@@ -30,16 +30,16 @@ export const FIELD_LABEL: Record<Field, string> = {
 
 const SYNONYMS: Record<Field, string[]> = {
   srno: ["sr no", "srno", "sr", "s no", "sno", "serial", "sl no", "no"],
-  date: ["date", "dt", "txn date", "transaction date", "entry date"],
-  payee: ["payee", "name", "particulars", "party", "description", "narration", "details", "payee name"],
-  credit: ["credit", "cr", "received", "money in", "receipt", "receipts", "credit amount"],
-  debit: ["debit", "dr", "paid", "money out", "payment", "payments", "debit amount"],
+  date: ["date", "dt", "txn date", "transaction date", "entry date", "tran date", "post date", "posting date", "value date"],
+  payee: ["payee", "name", "particulars", "party", "description", "narration", "details", "payee name", "transaction particulars", "transaction details", "transaction remarks", "remarks"],
+  credit: ["credit", "cr", "received", "money in", "receipt", "receipts", "credit amount", "credits", "deposit", "deposits", "deposit amt", "deposit amount", "credit amt"],
+  debit: ["debit", "dr", "paid", "money out", "payment", "payments", "debit amount", "debits", "withdrawal", "withdrawals", "withdrawal amt", "withdrawal amount", "debit amt"],
   bill: ["bill amt", "bill amount", "bill", "taxable", "taxable amount", "invoice amount", "basic amount"],
   gst: ["gst", "gst amount", "igst", "tax"],
   tds: ["tds", "tds amount"],
   after_tds: ["after tds", "net", "net amount", "amount after tds", "net payable"],
   balance: ["balance", "bal", "running balance", "closing balance"],
-  reference: ["ref", "reference", "ref no", "cheque no", "utr", "receipt no", "voucher no"],
+  reference: ["ref", "reference", "ref no", "cheque no", "utr", "receipt no", "voucher no", "tran id", "transaction id", "txn id", "chq no", "chq ref no", "cheque ref no", "chq ref", "ref no cheque no", "utr no"],
 };
 
 const normalise = (v: Cell) =>
@@ -58,9 +58,11 @@ export function detectHeader(grid: Grid): { headerRow: number; mapping: Mapping;
     grid[r].forEach((cell, c) => {
       const text = normalise(cell);
       if (!text) return;
+      // Bank statements add the currency to headings: "Withdrawal (INR)", "Balance (Rs.)".
+      const bare = text.replace(/\b(inr|rs|in rs|in inr)\b/g, "").replace(/\s+/g, " ").trim();
       for (const field of FIELDS) {
         if (mapping[field] !== undefined) continue;
-        if (SYNONYMS[field].includes(text)) {
+        if (SYNONYMS[field].includes(text) || SYNONYMS[field].includes(bare)) {
           mapping[field] = c;
           return;
         }
@@ -255,7 +257,8 @@ export function parseRows(grid: Grid, headerRow: number, mapping: Mapping, optio
       continue;
     }
 
-    const key = `${result.date}|${result.direction}|${result.amount ?? result.tax?.taxable_amount}|${(result.payee ?? "").toLowerCase()}`;
+    // A reference (bank transaction id, cheque no.) tells apart two same-day payments of the same amount.
+    const key = `${result.date}|${result.direction}|${result.amount ?? result.tax?.taxable_amount}|${(result.payee ?? "").toLowerCase()}|${result.reference ?? ""}`;
     const earlier = seen.get(key);
     if (earlier) {
       result.status = "warning";
@@ -298,9 +301,10 @@ export function toImportRows(rows: ParsedRow[]) {
       txn_date: r.date,
       direction: r.direction,
       amount: r.amount,
-      description: r.payee,
-      counterparty: r.payee,
-      reference_no: r.reference,
+      // Bank statement narrations can be long; keep within the stored field sizes.
+      description: r.payee?.slice(0, 500) ?? null,
+      counterparty: r.payee?.slice(0, 160) ?? null,
+      reference_no: r.reference?.slice(0, 80) ?? null,
       ...(r.tax ? { tax: r.tax } : {}),
     }));
 }

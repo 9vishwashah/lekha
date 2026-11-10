@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileSpreadsheet, Upload } from "lucide-react";
+import { FileSpreadsheet, FileText, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card } from "@/components/ui/bits";
 import { Checkbox, Select } from "@/components/ui/field";
@@ -15,6 +15,8 @@ import {
   type Grid,
   type Mapping,
   type ParsedRow,
+  detectHeader,
+  guessLayout,
   parseRows,
   summarise,
   toImportRows,
@@ -58,12 +60,61 @@ export function ImportWizard({ ledgerId, ledgerType }: { ledgerId: string; ledge
   const [showOnly, setShowOnly] = useState<"all" | "issues">("issues");
   const [acknowledged, setAcknowledged] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [locked, setLocked] = useState<{ file: File; wrong: boolean } | null>(null);
+  const [password, setPassword] = useState("");
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sheet = file?.sheets[sheetIndex];
 
+  /** Bank statement PDFs are read on this device (text, or OCR for scans and scrambled PDFs). */
+  const uploadPdf = async (f: File, pdfPassword?: string) => {
+    setError(null);
+    setUploading(true);
+    setProgress("Opening the statement…");
+    try {
+      if (f.size > 25 * 1024 * 1024) throw new Error("The PDF must be smaller than 25 MB.");
+      const { readStatementPdf, sha256Hex, PdfPasswordError } = await import("@/lib/import/pdf-browser");
+      const bytes = await f.arrayBuffer();
+      try {
+        const result = await readStatementPdf(bytes, {
+          password: pdfPassword,
+          onProgress: (p) =>
+            setProgress(p.stage === "reading" ? `Reading page ${p.page} of ${p.pages}…` : `Reading page ${p.page} of ${p.pages} with OCR… (first time downloads the reader)`),
+        });
+        const header = detectHeader(result.grid);
+        const preview: SheetPreview = {
+          name: result.ocr ? "Statement (OCR)" : "Statement",
+          grid: result.grid,
+          truncated: false,
+          headerRow: header.headerRow,
+          mapping: header.mapping,
+          confidence: header.confidence,
+          layout: guessLayout(header.mapping),
+        };
+        setLocked(null);
+        setPassword("");
+        setFile({ name: f.name, hash: await sha256Hex(bytes), sheets: [preview] });
+        chooseSheet([preview], 0);
+        if (result.ocr) toast.message("Read with OCR. Check amounts and dates in the preview before importing.");
+      } catch (e) {
+        if (e instanceof PdfPasswordError) {
+          setLocked({ file: f, wrong: e.wrong });
+          return;
+        }
+        throw e;
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUploading(false);
+      setProgress(null);
+    }
+  };
+
   const upload = async (f: File) => {
+    if (f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf") return uploadPdf(f);
     setError(null);
     setUploading(true);
     try {
@@ -148,19 +199,57 @@ export function ImportWizard({ ledgerId, ledgerType }: { ledgerId: string; ledge
             uploading && "pointer-events-none opacity-60",
           )}
         >
-          <span className="inline-flex size-14 items-center justify-center rounded-2xl bg-mustard">
-            <FileSpreadsheet className="size-6" />
+          <span className="flex gap-2">
+            <span className="inline-flex size-14 items-center justify-center rounded-2xl bg-mustard">
+              <FileSpreadsheet className="size-6" />
+            </span>
+            <span className="inline-flex size-14 items-center justify-center rounded-2xl bg-lavender">
+              <FileText className="size-6" />
+            </span>
           </span>
-          <span className="display text-2xl font-bold">{uploading ? "Reading workbook…" : "Choose an Excel file"}</span>
-          <span className="text-sm text-ink-2">.xlsx up to 4 MB. Nothing is saved until you confirm.</span>
+          <span className="display text-2xl font-bold">{uploading ? (progress ?? "Reading workbook…") : "Choose an Excel file or bank statement PDF"}</span>
+          <span className="max-w-md text-sm text-ink-2">
+            .xlsx up to 4 MB, or a bank statement / passbook PDF. PDFs are read on your device, and nothing is saved until you confirm.
+          </span>
           <input
             id="import-file"
             type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
-            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) upload(f);
+            }}
           />
         </label>
+        {locked && (
+          <form
+            className="flex w-full flex-col gap-2 rounded-[24px] bg-sunken p-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (password) uploadPdf(locked.file, password);
+            }}
+          >
+            <label htmlFor="pdf-password" className="font-semibold">
+              {locked.wrong ? "That password didn't open it. Try again." : `${locked.file.name} is password-protected`}
+            </label>
+            <p className="text-sm text-ink-2">Banks often use your date of birth, customer ID or part of your account number. It is only used here to open the file.</p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                id="pdf-password"
+                type="password"
+                autoComplete="off"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-12 min-w-0 flex-1 rounded-full bg-white px-4 ring-1 ring-inset ring-line"
+              />
+              <Button type="submit" disabled={!password || uploading}>
+                Open
+              </Button>
+            </div>
+          </form>
+        )}
         {error && (
           <p role="alert" className="font-medium text-out">
             {error}

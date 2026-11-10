@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/bits";
 import { ImportWizard } from "@/components/app/import-wizard";
 import { formatDateTime } from "@/lib/domain/dates";
 
-export const metadata = { title: "Import from Excel" };
+export const metadata = { title: "Import from Excel or PDF" };
 
 export default async function ImportPage(props: PageProps<"/ledgers/[id]/import">) {
   await requireUser();
@@ -29,9 +29,10 @@ export default async function ImportPage(props: PageProps<"/ledgers/[id]/import"
       <Link href={`/ledgers/${id}`} className="inline-flex h-11 items-center gap-2 text-sm font-medium text-ink-2 hover:text-ink">
         <ArrowLeft className="size-4" /> {ledger.name}
       </Link>
-      <PageHeader title="Import from Excel">
+      <PageHeader title="Import from Excel or PDF">
         <p className="mt-3 max-w-2xl text-ink-2">
-          Upload an .xlsx sheet with columns like SR. NO., DATE, PAYEE, CREDIT, DEBIT{ledger.ledger_type === "taxation" ? ", BILL AMT, GST, TDS, AFTER TDS" : ""}.
+          Upload an .xlsx sheet with columns like SR. NO., DATE, PAYEE, CREDIT, DEBIT{ledger.ledger_type === "taxation" ? ", BILL AMT, GST, TDS, AFTER TDS" : ""}, or
+          a bank statement or passbook PDF (Date, Particulars, Withdrawal, Deposit, Balance).
           You will see every row before anything is saved. Totals and running balance cells are never imported; balances are recalculated.
         </p>
       </PageHeader>
