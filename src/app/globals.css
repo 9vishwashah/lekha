@@ -25,6 +25,8 @@
 
   --money-in: #1f6b5f;
   --money-out: #b33a39;
+  /* Card fill for money-in entries: a light, solid green. */
+  --money-in-soft: #e3f0eb;
   --focus: #1d1d1b;
 
   --radius-card: 28px;
@@ -49,6 +51,7 @@
   --color-green: var(--green);
   --color-seashell: var(--seashell);
   --color-in: var(--money-in);
+  --color-in-soft: var(--money-in-soft);
   --color-out: var(--money-out);
 
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;

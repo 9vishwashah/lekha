@@ -6,7 +6,7 @@ import { Search, X } from "lucide-react";
  * Search on a shared statement. The rows are already on the page, so filtering happens in the
  * browser: instant, and nothing extra is sent to the server.
  */
-export function SharedSearch({ items }: { items: { key: string; text: string; node: ReactNode }[] }) {
+export function SharedSearch({ items, action }: { items: { key: string; text: string; node: ReactNode }[]; action?: ReactNode }) {
   const [query, setQuery] = useState("");
   const q = useDeferredValue(query.trim().toLowerCase());
   const digits = q.replace(/[₹,\s]/g, "");
@@ -16,7 +16,8 @@ export function SharedSearch({ items }: { items: { key: string; text: string; no
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="relative block">
+      <div className="flex items-center gap-2">
+      <label className="relative block min-w-0 flex-1">
         <span className="sr-only">Search entries</span>
         <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
         <input
@@ -32,6 +33,8 @@ export function SharedSearch({ items }: { items: { key: string; text: string; no
           </button>
         )}
       </label>
+      {action}
+      </div>
       {q && (
         <p className="px-1 text-[13px] text-ink-3" role="status">
           {shown.length} of {items.length} {items.length === 1 ? "entry" : "entries"}

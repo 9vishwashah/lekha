@@ -27,6 +27,8 @@ export interface SharedPayload {
     | { date: string; description: string; total: string; method: string; category: string | null; created: string; payers: { key: number; amount: string }[]; shares: { key: number; amount: string }[] }[]
     | null;
   settlements: { date: string; amount: string; created: string; from: number; to: number }[] | null;
+  /** Latest "this is right" from the person it was shared with (share links only). */
+  acknowledgement?: { at: string; name: string | null; current: boolean } | null;
 }
 
 export const isTokenShape = (token: string) => /^[A-Za-z0-9_-]{32,128}$/.test(token);

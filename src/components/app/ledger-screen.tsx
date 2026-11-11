@@ -5,12 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  CheckCircle2,
+  Clock,
   Download,
   FileSpreadsheet,
   FileText,
   History,
   Plus,
   Printer,
+  RefreshCw,
   Settings2,
   Share2,
   Upload,
@@ -42,6 +45,33 @@ interface Line {
 
 const TYPE_LABEL = { basic: "Basic ledger", taxation: "Taxation ledger" };
 
+export type Acknowledgement = { state: "none" | "current" | "stale"; at: string | null; name: string | null };
+
+/** Whether the person the ledger is shared with has confirmed the statement as it is now. */
+function AckStatus({ ack, party }: { ack: Acknowledgement; party: string | null }) {
+  const who = ack.name || party || "They";
+  const tone =
+    ack.state === "current" ? "bg-in-soft text-in ring-in/20" : ack.state === "stale" ? "bg-mustard/20 text-ink ring-mustard/50" : "bg-surface text-ink-2 ring-line";
+  return (
+    <p role="status" className={cn("no-print flex items-center gap-2 rounded-3xl px-4 py-3 text-[14px] ring-1 ring-inset", tone)}>
+      {ack.state === "current" ? <CheckCircle2 className="size-4 shrink-0" /> : ack.state === "stale" ? <RefreshCw className="size-4 shrink-0" /> : <Clock className="size-4 shrink-0" />}
+      <span>
+        {ack.state === "current" && (
+          <>
+            <strong>{who} confirmed this statement</strong> · {relativeTime(ack.at!)}
+          </>
+        )}
+        {ack.state === "stale" && (
+          <>
+            <strong>Changed since {who === "They" ? "they" : who} confirmed</strong> ({relativeTime(ack.at!)}). Waiting for them to confirm the latest entries.
+          </>
+        )}
+        {ack.state === "none" && <>Shared, not confirmed yet. The person you shared it with can tap “Confirm statement” on the link.</>}
+      </span>
+    </p>
+  );
+}
+
 export function LedgerScreen({
   ledger,
   summary,
@@ -58,6 +88,7 @@ export function LedgerScreen({
   hasFilters,
   visibleIn,
   visibleOut,
+  acknowledgement,
 }: {
   ledger: {
     id: string;
@@ -99,6 +130,8 @@ export function LedgerScreen({
   hasFilters: boolean;
   visibleIn: string;
   visibleOut: string;
+  /** The share link's confirmation status, or null when the ledger is not shared. */
+  acknowledgement?: Acknowledgement | null;
 }) {
   const router = useRouter();
   const w = walletOf(ledger.color);
@@ -254,6 +287,8 @@ export function LedgerScreen({
         )}
       </div>
 
+      {access.canManage && acknowledgement && <AckStatus ack={acknowledgement} party={ledger.partyName} />}
+
       {access.kind === "collaborator" && (
         <p className="rounded-3xl bg-surface p-4 text-sm text-ink-2 ring-1 ring-inset ring-line">
           You were invited to this ledger.{" "}
@@ -362,13 +397,19 @@ export function LedgerScreen({
                         <button
                           type="button"
                           onClick={() => setSelected(l)}
-                          className="flex w-full items-center gap-3 rounded-3xl bg-surface p-4 text-left ring-1 ring-inset ring-line/70 active:bg-white"
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-3xl p-4 text-left ring-1 ring-inset",
+                            l.txn.direction === "in" ? "bg-in-soft ring-in/20 active:brightness-95" : "bg-surface ring-line/70 active:bg-white",
+                          )}
                         >
                           <DateTile date={l.txn.txn_date} today={today} direction={l.txn.direction} />
                           <span className="min-w-0 flex-1">
                             <span className={cn("block truncate text-[15px] font-medium", l.txn.status === "void" && "line-through opacity-50")}>
-                              {l.txn.description || l.txn.counterparty || KIND_LABEL[l.txn.kind]}
+                              {l.txn.counterparty || l.txn.description || KIND_LABEL[l.txn.kind]}
                             </span>
+                            {l.txn.counterparty && l.txn.description && l.txn.description !== l.txn.counterparty && (
+                              <span className="block truncate text-[14px] text-ink-2">{l.txn.description}</span>
+                            )}
                             <span className="flex items-center gap-1.5 truncate text-[13px] text-ink-3">
                               {l.txn.voucher_no}
                               {l.txn.kind !== "regular" && ` · ${KIND_LABEL[l.txn.kind]}`}

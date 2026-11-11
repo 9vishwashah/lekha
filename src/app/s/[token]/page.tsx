@@ -8,6 +8,7 @@ import { walletOf } from "@/components/ui/bits";
 import { CashView, PersonalView } from "@/components/app/public-ledger";
 import { Logo } from "@/components/app/logo";
 import { SharedLive } from "./live";
+import { AcknowledgeButton } from "@/components/app/share-acknowledge";
 import { SetupRequired, missingConfig } from "@/components/app/setup-required";
 
 // Always rendered per request: private data, and configuration is read at runtime.
@@ -61,14 +62,27 @@ export default async function SharedLedger(props: PageProps<"/s/[token]">) {
       {ledger.ledger_type === "personal" ? (
         <PersonalView shared={shared} wBg={`${w.bg} ${w.fg}`} today={today} />
       ) : (
-        <CashView shared={shared} wBg={`${w.bg} ${w.fg}`} wSub={w.sub} today={today} />
+        <CashView
+          shared={shared}
+          wBg={`${w.bg} ${w.fg}`}
+          wSub={w.sub}
+          today={today}
+          searchAction={<AcknowledgeButton token={token} version={ledger.last_activity_at} ack={shared.acknowledgement ?? null} suggestedName={ledger.contractor_name} />}
+        />
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <ExportLink href={`/api/share/${token}?format=pdf`} className="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-5 font-medium text-surface">
-          <Download className="size-4" /> Download PDF
+      {/* Floats over a long list so the download is always one tap away. */}
+      <div className="sticky bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex justify-end gap-2 self-end">
+        <ExportLink
+          href={`/api/share/${token}?format=pdf`}
+          className="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-5 font-medium text-surface shadow-[0_12px_32px_rgb(29_29_27/0.28)]"
+        >
+          <Download className="size-4" /> PDF
         </ExportLink>
-        <ExportLink href={`/api/share/${token}?format=csv`} className="inline-flex h-12 items-center gap-2 rounded-full px-5 font-medium ring-1 ring-inset ring-line">
+        <ExportLink
+          href={`/api/share/${token}?format=csv`}
+          className="inline-flex h-12 items-center gap-2 rounded-full bg-surface px-5 font-medium ring-1 ring-inset ring-line shadow-[0_12px_32px_rgb(29_29_27/0.18)]"
+        >
           CSV
         </ExportLink>
       </div>

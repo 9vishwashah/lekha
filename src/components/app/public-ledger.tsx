@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { SharedPayload } from "@/lib/server/shared";
 import { sharedPersonalRecords } from "@/lib/server/shared";
 import { buildStatement, describeBalance, KIND_LABEL, type Perspective } from "@/lib/domain/ledger";
@@ -21,11 +22,14 @@ export function CashView({
   wBg,
   wSub,
   today,
+  searchAction,
 }: {
   shared: SharedPayload;
   wBg: string;
   wSub: string;
   today: string;
+  /** Shown beside the search box (the share page puts "Confirm statement" there). */
+  searchAction?: ReactNode;
 }) {
   const { ledger, options, transactions } = shared;
   const perspective = ledger.perspective as Perspective;
@@ -68,20 +72,24 @@ export function CashView({
         <p className="rounded-[var(--radius-card)] border-2 border-dashed border-line p-8 text-center text-ink-2">No entries yet.</p>
       ) : (
         <SharedSearch
+          action={searchAction}
           items={rows.map(({ row, counted, running }, i) => {
             const t = row;
             return {
               key: `${t.voucher_no}-${i}`,
               text: searchText(t),
               node: (
-              <li key={`${t.voucher_no}-${i}`} className="flex flex-col gap-2 rounded-3xl bg-surface p-4 ring-1 ring-inset ring-line/70">
+              <li
+                key={`${t.voucher_no}-${i}`}
+                className={cn("flex flex-col gap-2 rounded-3xl p-4 ring-1 ring-inset", t.direction === "in" ? "bg-in-soft ring-in/20" : "bg-surface ring-line/70")}
+              >
                 <div className="flex items-center gap-3">
                   <DateTile date={t.txn_date} today={today} direction={t.direction} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{t.description || t.counterparty || KIND_LABEL[t.kind]}</div>
+                    <div className="truncate font-medium">{t.counterparty || t.description || KIND_LABEL[t.kind]}</div>
+                    {t.counterparty && t.description && t.description !== t.counterparty && <div className="truncate text-[14px] text-ink-2">{t.description}</div>}
                     <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-ink-3">
                       {t.voucher_no}
-                      {t.counterparty && t.description && ` · ${t.counterparty}`}
                       {t.reference_no && ` · Ref ${t.reference_no}`}
                       {t.kind !== "regular" && <Badge className="h-5">{KIND_LABEL[t.kind]}</Badge>}
                     </div>

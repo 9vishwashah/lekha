@@ -143,6 +143,27 @@ export async function getPersonalLedger(db: Db, ledgerId: string) {
   };
 }
 
+/**
+ * Has the person this ledger is shared with confirmed it? Null when there is no active share link.
+ * A confirmation counts only for the version it was given on (ledgers.last_activity_at).
+ */
+export async function getShareAcknowledgement(db: Db, ledgerId: string, version: string) {
+  const { data: link, error } = await db.from("share_links").select("id").eq("ledger_id", ledgerId).is("revoked_at", null).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!link) return null;
+  const { data: ack, error: e2 } = await db
+    .from("share_acknowledgements")
+    .select("ledger_version, name, created_at")
+    .eq("share_link_id", link.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (e2) throw new Error(e2.message);
+  if (!ack) return { state: "none" as const, at: null, name: null };
+  const current = new Date(ack.ledger_version).getTime() === new Date(version).getTime();
+  return { state: current ? ("current" as const) : ("stale" as const), at: ack.created_at as string, name: (ack.name as string | null) ?? null };
+}
+
 export async function getCollaborators(db: Db, ledgerId: string) {
   const { data } = await db.from("ledger_collaborators").select("*").eq("ledger_id", ledgerId).order("created_at");
   return (data ?? []) as Collaborator[];

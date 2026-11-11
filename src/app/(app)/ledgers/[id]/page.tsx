@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser, getMemberships } from "@/lib/server/context";
 import { userDb } from "@/lib/supabase/server";
-import { getLedger, getLedgerTax, getLedgerTxns, getPersonalLedger, listLedgers, peopleNames, reversedIds, walletsOf } from "@/lib/server/queries";
+import { getLedger, getLedgerTax, getLedgerTxns, getPersonalLedger, getShareAcknowledgement, listLedgers, peopleNames, reversedIds, walletsOf } from "@/lib/server/queries";
 import { ledgerAccess } from "@/lib/server/access";
 import { buildStatement, describeBalance, type Perspective } from "@/lib/domain/ledger";
 import { toDecimal, toPaise } from "@/lib/domain/money";
@@ -50,7 +50,11 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
   }
 
   const membership = memberships.find((m) => m.workspace.id === ledger.workspace_id);
-  const wallets = membership ? walletsOf(await optional(listLedgers(db, ledger.workspace_id), [])) : [];
+  const [ledgerList, acknowledgement] = await Promise.all([
+    membership ? optional(listLedgers(db, ledger.workspace_id), []) : Promise.resolve([]),
+    access.canManage ? optional(getShareAcknowledgement(db, ledger.id, ledger.last_activity_at), null) : Promise.resolve(null),
+  ]);
+  const wallets = membership ? walletsOf(ledgerList) : [];
 
   const range = {
     from: params.from && isISODate(params.from) ? params.from : undefined,
@@ -122,6 +126,7 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
       filters={{ q: params.q ?? "", dir: dir ?? "", status: status ?? "", from: range.from ?? "", to: range.to ?? "" }}
       openAdd={params.add === "1"}
       hasFilters={Boolean(q || dir || status || range.from || range.to)}
+      acknowledgement={acknowledgement}
       visibleIn={toDecimal(lines.filter((l) => l.txn.status === "posted" && l.txn.direction === "in" && l.txn.is_cash).reduce((a, l) => a + toPaise(l.txn.amount), 0n))}
       visibleOut={toDecimal(lines.filter((l) => l.txn.status === "posted" && l.txn.direction === "out" && l.txn.is_cash).reduce((a, l) => a + toPaise(l.txn.amount), 0n))}
     />
