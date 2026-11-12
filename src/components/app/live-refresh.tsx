@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@clerk/nextjs";
 import { browserDb } from "@/lib/supabase/browser";
@@ -18,8 +18,13 @@ export function LiveRefresh({ ledgerId, tables }: { ledgerId: string; tables: st
   const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
   const [state, setState] = useState<LiveState>(configured ? "connecting" : "offline");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A stable key for the table list (callers pass a new array each render), and a topic of our own:
+  // Supabase reuses an open channel with the same topic, and adding listeners to it then throws.
+  const tableKey = tables.join(",");
+  const instance = useId();
 
   useEffect(() => {
+    const watched = tableKey.split(",").filter(Boolean);
     if (!session) return;
     const db = browserDb(() => session.getToken());
     if (!db) return;
@@ -27,8 +32,8 @@ export function LiveRefresh({ ledgerId, tables }: { ledgerId: string; tables: st
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => router.refresh(), 400);
     };
-    let channel = db.channel(`ledger:${ledgerId}`);
-    for (const table of tables) {
+    let channel = db.channel(`ledger:${ledgerId}:${instance}`);
+    for (const table of watched) {
       channel = channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table, filter: table === "ledgers" ? `id=eq.${ledgerId}` : `ledger_id=eq.${ledgerId}` },
@@ -36,7 +41,7 @@ export function LiveRefresh({ ledgerId, tables }: { ledgerId: string; tables: st
       );
     }
     // A wallet also changes when a party ledger's entry names it as the wallet the money went through.
-    if (tables.includes("transactions")) {
+    if (watched.includes("transactions")) {
       channel = channel.on("postgres_changes", { event: "*", schema: "public", table: "transactions", filter: `wallet_ledger_id=eq.${ledgerId}` }, refresh);
     }
     channel.subscribe((status) => {
@@ -52,7 +57,7 @@ export function LiveRefresh({ ledgerId, tables }: { ledgerId: string; tables: st
       if (timer.current) clearTimeout(timer.current);
       db.removeChannel(channel);
     };
-  }, [session, ledgerId, tables, router]);
+  }, [session, ledgerId, tableKey, instance, router]);
 
   return (
     <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-3" role="status">

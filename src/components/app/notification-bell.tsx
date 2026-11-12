@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "@clerk/nextjs";
 import { Bell } from "lucide-react";
@@ -23,17 +23,33 @@ export function NotificationBell({ initial, userId, className }: { initial: numb
     setCount(initial);
   }
 
+  // Read inside the realtime callback without resubscribing on every page change.
+  const onPage = useRef(pathname === "/notifications");
+  useEffect(() => {
+    onPage.current = pathname === "/notifications";
+  }, [pathname]);
+  // The bell is rendered twice (desktop sidebar and phone header). Supabase returns the existing
+  // channel for a topic that is already open, and adding a listener to a subscribed channel throws,
+  // so each bell gets its own topic.
+  const instance = useId();
+
   useEffect(() => {
     if (!session) return;
     const db = browserDb(() => session.getToken());
     const refresh = () => unreadNotifications().then(setCount).catch(() => {});
-    const channel = db
-      ?.channel(`notifications:${userId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => {
-        setCount((n) => n + 1);
-        if (pathname === "/notifications") router.refresh();
-      })
-      .subscribe();
+    let channel: ReturnType<NonNullable<typeof db>["channel"]> | null = null;
+    try {
+      channel =
+        db
+          ?.channel(`notifications:${userId}:${instance}`)
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => {
+            setCount((n) => n + 1);
+            if (onPage.current) router.refresh();
+          })
+          .subscribe() ?? null;
+    } catch {
+      channel = null; // live updates are a nicety; the minute poll below still keeps the count right
+    }
     const poll = setInterval(() => document.visibilityState === "visible" && refresh(), 60_000);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
@@ -42,7 +58,7 @@ export function NotificationBell({ initial, userId, className }: { initial: numb
       document.removeEventListener("visibilitychange", onVisible);
       if (channel) db?.removeChannel(channel);
     };
-  }, [session, userId, pathname, router]);
+  }, [session, userId, instance, router]);
 
   const active = pathname === "/notifications";
   return (
