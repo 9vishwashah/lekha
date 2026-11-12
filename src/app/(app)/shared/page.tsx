@@ -3,6 +3,7 @@ import { WORKSPACE_COOKIE, getCollaborations, getMemberships, requireUser, share
 import { SwitchToWorkspace } from "./switch";
 import { loadSharedAccountRows, sharedAccountDebts } from "@/lib/server/people";
 import { userDb } from "@/lib/supabase/server";
+import { listContractors } from "@/lib/server/queries";
 import { EmptyState, PageHeader } from "@/components/ui/bits";
 import { WalletCard } from "@/components/app/wallet-card";
 import { LinkButton } from "@/components/ui/button";
@@ -15,7 +16,6 @@ export default async function SharedPage() {
   const chosen = jar.get(WORKSPACE_COOKIE)?.value;
   const currentId = (memberships.find((m) => m.workspace.id === chosen) ?? memberships[0])?.workspace.id;
   const here = sharedWithMeHere(memberships, currentId, userId, all);
-  const shared = here.items;
   if (!here.visible) {
     return (
       <div>
@@ -28,7 +28,15 @@ export default async function SharedPage() {
       </div>
     );
   }
-  const accounts = new Map(sharedAccountDebts(await loadSharedAccountRows(db), userId).map((a) => [a.ledger.id, a]));
+  const [rows, clients] = await Promise.all([loadSharedAccountRows(db), currentId ? listContractors(db, currentId) : Promise.resolve([])]);
+  const accounts = new Map(sharedAccountDebts(rows, userId).map((a) => [a.ledger.id, a]));
+  // A one-to-one account someone keeps with you (made when they add an expense or payment with
+  // you) shows on their client page when you have one for them, not here as a separate ledger.
+  const onCard = new Set(clients.map((c) => c.linked_user_id).filter(Boolean));
+  const shared = here.items.filter((s) => {
+    const a = accounts.get(s.ledger!.id);
+    return !(a?.ledger.is_direct && a.owner?.user_id && onCard.has(a.owner.user_id));
+  });
   const position = (ledgerId: string, canCreate: boolean) => {
     const account = accounts.get(ledgerId);
     if (!account) return { balance: null, meaning: canCreate ? "You can add entries" : "View only", name: null };

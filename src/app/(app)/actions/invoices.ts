@@ -235,6 +235,27 @@ export async function saveDraft(input: DraftInput): Promise<ActionResult<{ id: s
   return { ok: true, data: { id: data as string }, message: "Draft saved" };
 }
 
+/**
+ * Saves changes to an issued invoice: number, share link and payments stay; the ledger entry is
+ * updated to the new total and date in the same transaction.
+ */
+export async function editIssuedInvoice(input: DraftInput): Promise<ActionResult<{ id: string }>> {
+  const ctx = await getWorkspace();
+  const parsed = draftSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message, fieldErrors: issues(parsed.error) };
+  const { look, ...draft } = parsed.data;
+  if (!draft.id) return { ok: false, error: "Invoice not found" };
+  const { data, error } = await ctx.db.rpc("edit_issued_invoice", { p: { ...draft, workspace_id: ctx.workspace.id } });
+  if (error) return fail(error);
+  if (look) {
+    const styled = await ctx.db.rpc("set_invoice_look", { p_id: data, p: look });
+    if (styled.error) return fail(styled.error);
+  }
+  refresh(data as string);
+  revalidatePath("/ledgers", "layout");
+  return { ok: true, data: { id: data as string }, message: "Invoice updated" };
+}
+
 export async function deleteDraft(id: string): Promise<ActionResult> {
   await requireUser();
   const db = await userDb();

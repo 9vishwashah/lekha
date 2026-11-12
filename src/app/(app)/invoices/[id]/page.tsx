@@ -117,7 +117,7 @@ export default async function InvoiceDetail(props: PageProps<"/invoices/[id]">) 
       )}
       {ctx.canWrite && i.status === "issued" && (
         <InvoiceActions
-          invoice={{ id, no: i.invoice_no!, proforma, open, balance: balance.toString(), total: i.grand_total, received: i.amount_received, due: i.due_date, phone: i.client_phone, clientName: i.client_contact || i.client_name || "there", business: doc.seller.name, notes: i.notes ?? "", terms: i.terms ?? "", showQr: i.show_digital_qr, allowClaims: i.allow_payment_claims, showHistory: i.show_payment_history, wallets }}
+          invoice={{ id, no: i.invoice_no!, proforma, open, balance: balance.toString(), total: i.grand_total, received: i.amount_received, due: i.due_date, phone: i.client_phone, email: i.client_email ?? null, clientName: i.client_contact || i.client_name || "there", business: doc.seller.name, notes: i.notes ?? "", terms: i.terms ?? "", showQr: i.show_digital_qr, allowClaims: i.allow_payment_claims, showHistory: i.show_payment_history, wallets }}
           url={url}
           today={today}
           suggested={reminderStageFor(i.due_date, today)}

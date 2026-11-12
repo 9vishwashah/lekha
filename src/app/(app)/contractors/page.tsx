@@ -2,7 +2,7 @@ import { IntentLink } from "@/components/app/intent-link";
 import { FilterChips } from "@/components/app/pending-nav";
 import { loadPeople } from "@/lib/server/profiles";
 import { listInvoices } from "@/lib/server/invoices";
-import { getWorkspace } from "@/lib/server/context";
+import { getMyProfile, getWorkspace } from "@/lib/server/context";
 import { listContractors } from "@/lib/server/queries";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
 import { externalNet, loadSharedAccountRows, peoplePositions } from "@/lib/server/people";
@@ -38,6 +38,12 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
     loadSharedAccountRows(ctx.db),
     listInvoices(ctx.db, ctx.workspace.id),
   ]);
+  const [profile, matchRows] = await Promise.all([
+    getMyProfile(),
+    ctx.canWrite ? ctx.db.rpc("client_lekha_matches", { p_workspace: ctx.workspace.id }) : Promise.resolve({ data: [] }),
+  ]);
+  // Clients whose phone number belongs to someone on Lekha: one tap on their page links them.
+  const onLekha = new Set(((matchRows.data as { contractor_id: string }[] | null) ?? []).map((m) => m.contractor_id));
   const people = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, contractors);
   const [accounts, books] = await Promise.all([loadPeople(ctx.db, contractors.map((c) => c.linked_user_id)), loadBooks(ctx.db, ctx.workspace.id, sharedRows)]);
   // The same figure Home adds up, so the two always agree to the rupee.
@@ -67,7 +73,7 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
       <PageHeader
         title="Client Accounts"
         kicker={`${contractors.filter((c) => c.is_active).length} active · clients, contractors, friends & family`}
-        actions={ctx.canWrite && <AddContractorButton existing={contractors.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))} />}
+        actions={ctx.canWrite && <AddContractorButton existing={contractors.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))} me={{ name: profile?.full_name ?? null, username: profile?.username ?? null }} />}
       />
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <form action="/contractors" className="w-full sm:max-w-sm">
@@ -105,10 +111,13 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((c) => {
             const ledgers = balances.entries.filter((e) => e.ledger.contractor_id === c.id && e.ledger.ledger_type !== "personal" && !e.ledger.is_direct).length;
-            const shared = sharedRows.participants.filter((p) => p.contractor_id === c.id).length;
+            // One-to-one accounts made by adding an expense or payment are not "shared accounts": their
+            // entries are simply part of this person's balance and activity.
+            const directIds = new Set(sharedRows.ledgers.filter((l) => l.is_direct).map((l) => l.id));
+            const shared = sharedRows.participants.filter((p) => p.contractor_id === c.id && !directIds.has(p.ledger_id)).length;
             const adv = advances.filter((a) => a.contractor_id === c.id && a.status === "active").reduce((acc, a) => acc + a.position.outstanding, 0n);
-            const balance = balanceOf(c.id);
-            const theirs = externalNet(people.byClient.get(c.id));
+            // What they recorded in their own Lekha counts in the same figure, not as a footnote.
+            const balance = balanceOf(c.id) + externalNet(people.byClient.get(c.id));
             return (
               <li key={c.id}>
                 <IntentLink href={`/contractors/${c.id}`} className="flex h-full flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 hover:bg-white">
@@ -141,12 +150,8 @@ export default async function ContractorsPage(props: PageProps<"/contractors">) 
                     {c.linked_user_id && (
                       <Badge tone="in">{accounts.get(c.linked_user_id)?.username ? `@${accounts.get(c.linked_user_id)!.username}` : "On Lekha"}</Badge>
                     )}
+                    {!c.linked_user_id && onLekha.has(c.id) && <Badge tone="in">Found on Lekha · link</Badge>}
                     {c.merged_into && <Badge>Merged</Badge>}
-                    {theirs !== 0n && (
-                      <span className="text-[12px] text-ink-3">
-                        In their accounts: {theirs > 0n ? "they owe you" : "you owe"} <Money value={theirs > 0n ? theirs : -theirs} />
-                      </span>
-                    )}
                   </div>
                 </IntentLink>
               </li>

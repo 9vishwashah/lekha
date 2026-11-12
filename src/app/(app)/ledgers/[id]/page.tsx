@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
-import { requireUser, getMemberships } from "@/lib/server/context";
+import { notFound, redirect } from "next/navigation";
+import { requireUser, getMemberships, getWorkspace } from "@/lib/server/context";
 import { userDb } from "@/lib/supabase/server";
 import { getLedger, getLedgerTax, getLedgerTxns, getPersonalLedger, getShareAcknowledgement, listLedgers, peopleNames, reversedIds, walletsOf } from "@/lib/server/queries";
 import { ledgerAccess } from "@/lib/server/access";
@@ -41,6 +41,23 @@ export default async function LedgerPage(props: PageProps<"/ledgers/[id]">) {
   ]);
   const access = await ledgerAccess(ledger);
   if (!access) notFound();
+
+  // A one-to-one account made by adding an expense or payment with someone is not a ledger of its
+  // own: the person's client page is their account. Send people there.
+  if (ledger.is_direct) {
+    if (access.kind === "member" && ledger.contractor_id) redirect(`/contractors/${ledger.contractor_id}`);
+    if (memberships.length > 0) {
+      const ctx = await getWorkspace();
+      const { data: card } = await db
+        .from("contractors")
+        .select("id")
+        .eq("workspace_id", ctx.workspace.id)
+        .eq("linked_user_id", ledger.owner_user_id)
+        .limit(1)
+        .maybeSingle();
+      if (card) redirect(`/contractors/${card.id}`);
+    }
+  }
 
   if (ledger.ledger_type === "personal") {
     if (personal instanceof Error) throw personal;

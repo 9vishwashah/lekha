@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, MapPin, Phone, Plus } from "lucide-react";
-import { getWorkspace } from "@/lib/server/context";
+import { getMyProfile, getWorkspace } from "@/lib/server/context";
+import { avatarUrl } from "@/lib/avatar";
 import { getPersonalLedger, isUuid, listContractors, listLedgers, walletsOf } from "@/lib/server/queries";
 import { listInvoices } from "@/lib/server/invoices";
 import { advancesWithPositions, ledgerBalances } from "@/lib/server/workspace-data";
@@ -11,6 +12,10 @@ import { describeBalance, type Perspective } from "@/lib/domain/ledger";
 import { expenseEffect } from "@/lib/domain/split";
 import { sum, toPaise } from "@/lib/domain/money";
 import { formatDateShort, todayISO } from "@/lib/domain/dates";
+import { ShareClientAccount } from "./share";
+import { ActivityList } from "./activity";
+import { ClientEmail } from "./email";
+import { emailConfigured } from "@/lib/email/send";
 import { ADVANCE_STATUS_LABEL } from "@/lib/domain/advances";
 import { Amount, Money } from "@/components/ui/amount";
 import { Avatar, Badge, Card, SectionTitle } from "@/components/ui/bits";
@@ -46,20 +51,35 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
   ]);
   const c = all.find((x) => x.id === id);
   if (!c) notFound();
-  const account = c.linked_user_id ? ((await loadPeople(ctx.db, [c.linked_user_id])).get(c.linked_user_id) ?? null) : null;
+  const [account, profile, matchRows, emailRow] = await Promise.all([
+    c.linked_user_id ? loadPeople(ctx.db, [c.linked_user_id]).then((m) => m.get(c.linked_user_id!) ?? null) : Promise.resolve(null),
+    getMyProfile(),
+    ctx.canWrite && !c.linked_user_id && c.phone ? ctx.db.rpc("client_lekha_matches", { p_workspace: ctx.workspace.id }) : Promise.resolve({ data: [] }),
+    ctx.db.from("contractors").select("monthly_statement, last_reminded_at").eq("id", id).maybeSingle(),
+  ]);
+  const emailState = (emailRow.data as { monthly_statement: boolean; last_reminded_at: string | null } | null) ?? { monthly_statement: false, last_reminded_at: null };
+  const found = ((matchRows.data as { contractor_id: string; username: string; full_name: string; avatar_path: string | null }[] | null) ?? []).find((m) => m.contractor_id === id);
   const position = peoplePositions(ctx.workspace.id, ctx.userId, balances, sharedRows, invoices, all).byClient.get(id);
   // Your books: every ledger, invoice, advance and account with them, netted.
   const books = await loadBooks(ctx.db, ctx.workspace.id, sharedRows);
   const overall = books.positions.get(id) ?? 0n;
   const addsUp = books.breakdown.get(id) ?? [];
   const theirs = externalNet(position);
+  const first = c.name.split(" ")[0];
   // Accounts they run that you are in show here too, on the card linking made for them.
   const sharedLedgerIds = new Set(sharedRows.participants.filter((p) => p.contractor_id === id || (c.linked_user_id && p.user_id === c.linked_user_id)).map((p) => p.ledger_id));
-  const directLedger = sharedRows.ledgers.find((l) => l.is_direct && l.contractor_id === id && sharedLedgerIds.has(l.id));
-  const sharedAccounts = sharedRows.ledgers.filter((l) => sharedLedgerIds.has(l.id) && l.id !== directLedger?.id);
+  const directLedger = sharedRows.ledgers.find((l) => l.is_direct && l.workspace_id === ctx.workspace.id && l.contractor_id === id && sharedLedgerIds.has(l.id));
+  // One-to-one accounts they keep with you in their own Lekha (made when they add an expense or a
+  // payment with you). Like yours, they are not shown as separate accounts: their entries are rows here.
+  const theirDirect = sharedRows.ledgers.filter((l) => l.is_direct && l.workspace_id !== ctx.workspace.id && sharedLedgerIds.has(l.id));
+  const hidden = new Set([directLedger?.id, ...theirDirect.map((l) => l.id)].filter(Boolean));
+  const sharedAccounts = sharedRows.ledgers.filter((l) => sharedLedgerIds.has(l.id) && !hidden.has(l.id));
   const peopleIn = (ledgerId: string) => sharedRows.participants.filter((p) => p.ledger_id === ledgerId).length;
   const ledgers = balances.entries.filter((e) => e.ledger.contractor_id === id && e.ledger.ledger_type !== "personal");
-  const direct = directLedger ? await getPersonalLedger(ctx.db, directLedger.id) : null;
+  const [direct, theirs_] = await Promise.all([
+    directLedger ? getPersonalLedger(ctx.db, directLedger.id) : Promise.resolve(null),
+    Promise.all(theirDirect.map(async (l) => ({ ledger: l, data: await getPersonalLedger(ctx.db, l.id) }))),
+  ]);
   const clientSide = direct?.participants.find((p) => p.contractor_id === id);
   const mine = advances.filter((a) => a.contractor_id === id);
   const active = mine.filter((a) => a.status === "active");
@@ -82,7 +102,8 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
         from: toPaise(i.amount_received) >= toPaise(i.grand_total) ? "Invoice · paid" : "Invoice",
         amount: toPaise(i.grand_total),
         void: false,
-        href: `/invoices/${i.id}`,
+        href: `/invoices/${i.id}` as string | undefined,
+        entry: undefined,
       })),
     ...recentRows.map((t) => ({
       key: t.id,
@@ -91,7 +112,8 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       from: t.ledger.name,
       amount: t.direction === "out" ? toPaise(t.amount) : -toPaise(t.amount),
       void: t.status === "void",
-      href: `/ledgers/${t.ledger.id}`,
+      href: `/ledgers/${t.ledger.id}` as string | undefined,
+      entry: undefined,
     })),
     ...(direct?.expenses ?? []).map((e) => ({
       key: e.id,
@@ -100,7 +122,8 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       from: e.split_group_id ? "Split expense" : "Expense",
       amount: clientSide ? -expenseEffect(e, clientSide.id).effect : 0n,
       void: e.status === "void",
-      href: `/ledgers/${directLedger!.id}`,
+      href: undefined as string | undefined,
+      entry: { kind: "expense" as const, id: e.id, ledgerId: directLedger!.id, mine: true, total: String(toPaise(e.total_amount)) },
     })),
     ...(direct?.settlements ?? []).map((s) => ({
       key: s.id,
@@ -109,15 +132,46 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       from: "Payment",
       amount: s.from_participant_id === clientSide?.id ? -toPaise(s.amount) : toPaise(s.amount),
       void: s.status === "void",
-      href: `/ledgers/${directLedger!.id}`,
+      href: undefined as string | undefined,
+      entry: { kind: "settlement" as const, id: s.id, ledgerId: directLedger!.id, mine: true },
     })),
+    // Entries they added in their own Lekha, signed from your side the same way.
+    ...theirs_.flatMap(({ ledger: l, data }) => {
+      const me = data.participants.find((p) => p.user_id === ctx.userId);
+      if (!me) return [];
+      return [
+        ...data.expenses.map((e) => ({
+          key: e.id,
+          date: e.txn_date,
+          title: e.description,
+          from: `Added by ${first}`,
+          amount: expenseEffect(e, me.id).effect,
+          void: e.status === "void",
+          href: undefined as string | undefined,
+          entry: { kind: "expense" as const, id: e.id, ledgerId: l.id, mine: false, total: String(toPaise(e.total_amount)) },
+        })),
+        ...data.settlements.map((s) => ({
+          key: s.id,
+          date: s.txn_date,
+          title: s.from_participant_id === me.id ? "Payment made" : "Payment received",
+          from: `Added by ${first}`,
+          amount: s.from_participant_id === me.id ? toPaise(s.amount) : -toPaise(s.amount),
+          void: s.status === "void",
+          href: undefined as string | undefined,
+          entry: { kind: "settlement" as const, id: s.id, ledgerId: l.id, mine: false },
+        })),
+      ];
+    }),
   ].sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));
-  const directIds = new Set([...(direct?.expenses ?? []), ...(direct?.settlements ?? [])].map((x) => x.id));
+  const directIds = new Set(
+    [...(direct?.expenses ?? []), ...(direct?.settlements ?? []), ...theirs_.flatMap((t) => [...t.data.expenses, ...t.data.settlements])].map((x) => x.id),
+  );
   const counted = activity.filter((a) => !a.void && directIds.has(a.key));
   const youGot = sum(ledgers.map((e) => e.statement?.totals.moneyIn ?? 0n)) + sum(counted.filter((a) => a.amount < 0n).map((a) => -a.amount));
   const youGave = sum(ledgers.map((e) => e.statement?.totals.moneyOut ?? 0n)) + sum(counted.filter((a) => a.amount > 0n).map((a) => a.amount));
   const cashLedgers = walletsOf(allLedgers);
-  const first = c.name.split(" ")[0];
+  // Your books plus what they recorded with you in their own Lekha: one figure.
+  const together = overall + theirs;
 
   return (
     <div className="flex flex-col gap-8">
@@ -138,19 +192,25 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
           </div>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
-          <span className="text-sm font-semibold text-ink-2">{overall === 0n ? "All square" : overall > 0n ? `${c.name.split(" ")[0]} owes you` : `You owe ${c.name.split(" ")[0]}`}</span>
-          <Amount value={overall > 0n ? overall : -overall} size="xl" tone={overall > 0n ? "in" : overall < 0n ? "out" : "inherit"} />
-          <span className="text-[13px] text-ink-3">Across ledgers, invoices, advances and shared accounts</span>
-          {theirs !== 0n && (
-            <span className="text-[13px] text-ink-3">
-              Plus in their own accounts: {theirs > 0n ? "they owe you" : "you owe"} <Money value={theirs > 0n ? theirs : -theirs} />
-            </span>
-          )}
+          <span className="text-sm font-semibold text-ink-2">{together === 0n ? "All square" : together > 0n ? `${first} owes you` : `You owe ${first}`}</span>
+          <Amount value={together > 0n ? together : -together} size="xl" tone={together > 0n ? "in" : together < 0n ? "out" : "inherit"} />
+          <span className="text-[13px] text-ink-3">
+            {theirs !== 0n ? `Includes what ${first} added on their side` : "Across ledgers, invoices, advances and expenses together"}
+          </span>
         </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
         {ctx.canWrite && c.is_active && <ClientMoneyButtons client={{ id: c.id, name: c.name }} cashLedgers={cashLedgers} today={today} />}
+        {ctx.canWrite && c.is_active && (
+          <ClientEmail
+            client={{ id: c.id, name: c.name, email: c.email }}
+            owes={String(overall > 0n ? overall : 0n)}
+            monthlyOn={emailState.monthly_statement}
+            lastReminded={emailState.last_reminded_at}
+            ready={emailConfigured()}
+          />
+        )}
         {ctx.canWrite && (
           <ContractorActions
             contractor={c}
@@ -193,6 +253,8 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
         account={account ?? (c.linked_user_id ? { username: null, fullName: c.name, photo: null } : null)}
         canWrite={ctx.canWrite && c.is_active}
         whatsappTo={whatsappNumber(c.phone)}
+        match={found ? { username: found.username, fullName: found.full_name, photo: avatarUrl(found.avatar_path) } : null}
+        me={{ name: profile?.full_name ?? null, username: profile?.username ?? null }}
       />
 
       <div className="flex flex-wrap gap-2 text-[15px]">
@@ -238,28 +300,26 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionTitle action={directLedger && <LinkButton href={`/ledgers/${directLedger.id}`} size="sm" variant="secondary">Full account</LinkButton>}>
+        <SectionTitle
+          action={
+            directLedger && (
+              <div className="flex gap-2">
+                {ctx.canWrite && <ShareClientAccount ledgerId={directLedger.id} name={c.name} />}
+              </div>
+            )
+          }
+        >
           Activity with {first}
         </SectionTitle>
         {activity.length === 0 ? (
           <p className="text-ink-2">Nothing yet. {ctx.canWrite && c.is_active ? "Add an expense or record a payment to start." : ""}</p>
         ) : (
-          <ul className="divide-y divide-line rounded-[var(--radius-card)] bg-surface ring-1 ring-inset ring-line/70">
-            {activity.slice(0, 15).map((a) => (
-              <li key={a.key}>
-                <Link href={a.href} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{a.title}</span>
-                    <span className="block text-[13px] text-ink-3">{a.from} · {formatDateShort(a.date, today)}{a.void ? " · void" : ""}</span>
-                  </span>
-                  <span className="text-right">
-                    <Money value={a.amount < 0n ? -a.amount : a.amount} tone={a.amount < 0n ? "in" : "out"} className={a.void ? "block line-through opacity-50" : "block font-semibold"} />
-                    <span className="text-[12px] text-ink-3">{a.amount < 0n ? "You got" : "You gave"}</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <ActivityList
+            rows={activity.slice(0, 300).map((a) => ({ key: a.key, date: a.date, title: a.title, from: a.from, amount: String(a.amount), void: a.void, href: a.href, entry: a.entry }))}
+            today={today}
+            first={first}
+            canWrite={ctx.canWrite}
+          />
         )}
       </section>
 

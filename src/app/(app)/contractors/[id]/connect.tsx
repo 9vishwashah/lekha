@@ -2,7 +2,8 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Link2 } from "lucide-react";
+import { Link2, Send } from "lucide-react";
+import { inviteMessage } from "@/lib/invite";
 import { Avatar } from "@/components/ui/bits";
 import { Button } from "@/components/ui/button";
 import { AddByUsername } from "@/components/app/add-by-username";
@@ -19,11 +20,16 @@ export function ConnectCard({
   account,
   canWrite,
   whatsappTo,
+  match,
+  me,
 }: {
   contractor: { id: string; name: string };
   account: { username: string | null; fullName: string; photo: string | null } | null;
   canWrite: boolean;
   whatsappTo: string | null;
+  /** Someone on Lekha with this client's phone number. Linking is still your tap. */
+  match?: { username: string; fullName: string; photo: string | null } | null;
+  me: { name: string | null; username: string | null };
 }) {
   const router = useRouter();
   const [busy, start] = useTransition();
@@ -62,6 +68,34 @@ export function ConnectCard({
 
   if (!canWrite) return null;
 
+  if (match) {
+    return (
+      <section className="flex flex-col gap-4 rounded-[var(--radius-card)] bg-in-soft p-5 ring-1 ring-inset ring-in/20 sm:flex-row sm:items-center sm:p-6">
+        <Avatar name={match.fullName} src={match.photo} className="size-12" />
+        <div className="min-w-0 flex-1">
+          <p className="display text-xl font-bold">{first} is on Lekha</p>
+          <p className="mt-1 text-[14px] text-ink-2">
+            {match.fullName} (@{match.username}) has the same phone number. Link to see what you owe each other in one place, and what either of you adds
+            shows for both.
+          </p>
+        </div>
+        <Button
+          disabled={busy}
+          onClick={() =>
+            start(async () => {
+              const res = await linkClient(contractor.id, match.username);
+              if (!res.ok) return void toast.error(res.error);
+              toast.success(res.message ?? "Linked");
+              router.refresh();
+            })
+          }
+        >
+          <Link2 className="size-4" /> Link @{match.username}
+        </Button>
+      </section>
+    );
+  }
+
   return (
     <section className="flex flex-col gap-4 rounded-[var(--radius-card)] bg-surface p-5 ring-1 ring-inset ring-line/70 sm:p-6">
       <div className="flex items-start gap-4">
@@ -89,14 +123,15 @@ export function ConnectCard({
           return true;
         }}
         inviteLabel={`Ask ${first} to join on WhatsApp`}
-        onInviteLink={() =>
-          window.open(
-            whatsappUrl(`Hi ${first}, I keep our accounts on Lekha. Sign up at ${window.location.origin} and send me your username so I can add you.`, whatsappTo),
-            "_blank",
-            "noopener,noreferrer",
-          )
-        }
+        onInviteLink={() => window.open(whatsappUrl(inviteMessage(contractor.name, me, window.location.origin), whatsappTo), "_blank", "noopener,noreferrer")}
       />
+      <Button
+        variant="secondary"
+        className="self-start"
+        onClick={() => window.open(whatsappUrl(inviteMessage(contractor.name, me, window.location.origin), whatsappTo), "_blank", "noopener,noreferrer")}
+      >
+        <Send className="size-4" /> Invite {first} on Lekha
+      </Button>
     </section>
   );
 }

@@ -217,7 +217,7 @@ function paymentOf(p: PaymentSnapshot, balance: Paise, number: string | null, bu
         number: p.upi.number ?? null,
         qrImage: p.upi.dynamic === false ? brandUrl(p.upi.qr_path) : null,
         // Amount-specific QR for what is still owed. A payment link, not proof of payment.
-        link: p.upi.dynamic === false || !p.upi.id ? null : upiLink({ id: p.upi.id, payee: p.upi.payee ?? business, amount: balance, note: number ? `Invoice ${number}` : "Invoice", reference: number }),
+        link: p.upi.dynamic === false || !p.upi.id ? null : upiLink({ id: p.upi.id, payee: p.upi.payee ?? business, amount: balance, note: number ? `Invoice ${number}` : "Invoice" }),
       }
     : null;
   const bank = p.bank?.account

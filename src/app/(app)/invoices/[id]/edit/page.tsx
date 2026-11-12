@@ -8,7 +8,7 @@ import { draftFromRow } from "@/lib/invoices/editor";
 import { PageHeader } from "@/components/ui/bits";
 import { InvoiceEditor } from "@/components/app/invoice/invoice-editor";
 
-export const metadata = { title: "Edit draft" };
+export const metadata = { title: "Edit invoice" };
 
 export default async function EditInvoice(props: PageProps<"/invoices/[id]/edit">) {
   const ctx = await getWorkspace();
@@ -16,7 +16,9 @@ export default async function EditInvoice(props: PageProps<"/invoices/[id]/edit"
   if (!isUuid(id)) notFound();
   const data = await getInvoice(ctx.db, id);
   if (!data) notFound();
-  if (data.invoice.status !== "draft" || !ctx.canWrite) redirect(`/invoices/${id}`);
+  // Drafts and issued invoices can be edited; a cancelled one cannot (duplicate it instead).
+  if (data.invoice.status === "cancelled" || !ctx.canWrite) redirect(`/invoices/${id}`);
+  const issued = data.invoice.status === "issued";
   const [settings, profiles, clients, ledgers, library, logos] = await Promise.all([
     getInvoiceSettings(ctx.db, ctx.workspace.id, ctx.workspace.name),
     listPaymentProfiles(ctx.db, ctx.workspace.id),
@@ -28,10 +30,18 @@ export default async function EditInvoice(props: PageProps<"/invoices/[id]/edit"
   return (
     <div className="flex flex-col gap-4">
       <Link href={`/invoices/${id}`} className="inline-flex h-11 w-fit items-center gap-2 text-sm font-medium text-ink-2 hover:text-ink">
-        <ArrowLeft className="size-4" /> Draft details
+        <ArrowLeft className="size-4" /> {issued ? data.invoice.invoice_no ?? "Invoice" : "Draft details"}
       </Link>
-      <PageHeader title="Edit draft" />
+      <PageHeader title={issued ? `Edit ${data.invoice.invoice_no ?? "invoice"}` : "Edit draft"}>
+        {issued && (
+          <p className="mt-3 max-w-2xl text-ink-2">
+            The number, share link and payments stay. The ledger entry updates to the new total and date, and the change is on the invoice timeline.
+            To move it to another ledger, cancel it and issue a new one.
+          </p>
+        )}
+      </PageHeader>
       <InvoiceEditor
+        issued={issued}
         initial={draftFromRow(data.invoice, data.items)}
         settings={settings}
         profiles={profiles}

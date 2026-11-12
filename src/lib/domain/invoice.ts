@@ -249,15 +249,27 @@ export function formatInvoiceNumber(s: { format: string; prefix: string; padding
 // ---------------------------------------------------------------------------------------------
 // Getting paid and sharing
 // ---------------------------------------------------------------------------------------------
-/** A UPI deep link. Starts a payment; it never proves one was made. */
-export function upiLink(p: { id: string; payee?: string | null; amount?: Paise | null; note?: string | null; reference?: string | null }) {
+/** Letters, digits and spaces only: some UPI apps refuse a name or note with &, / or other symbols. */
+const upiText = (s: string, max: number) =>
+  s.replace(/&/g, " and ").replace(/[^A-Za-z0-9 .\-]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+
+/**
+ * A UPI deep link (also drawn as the invoice QR). Starts a payment; it never proves one was made.
+ *
+ * Only the person-to-person fields are sent: pa, pn, am, cu, tn. The merchant fields (tr, mc) make
+ * apps treat it as a payment to a registered merchant; for an ordinary UPI ID that check fails and
+ * apps such as Google Pay and PhonePe stop with "could not load banking name". The invoice number
+ * goes in the note instead.
+ */
+export function upiLink(p: { id: string; payee?: string | null; amount?: Paise | null; note?: string | null }) {
   const q = new URLSearchParams();
-  q.set("pa", p.id);
-  if (p.payee) q.set("pn", p.payee.slice(0, 50));
+  q.set("pa", p.id.trim());
+  const name = p.payee ? upiText(p.payee, 50) : "";
+  if (name) q.set("pn", name);
   if (p.amount && p.amount > 0n) q.set("am", toDecimal(p.amount));
   q.set("cu", "INR");
-  if (p.note) q.set("tn", p.note.slice(0, 50));
-  if (p.reference) q.set("tr", p.reference.slice(0, 35));
+  const note = p.note ? upiText(p.note, 50) : "";
+  if (note) q.set("tn", note);
   // URLSearchParams writes spaces as "+", which UPI apps show literally.
   return `upi://pay?${q.toString().replace(/\+/g, "%20")}`;
 }

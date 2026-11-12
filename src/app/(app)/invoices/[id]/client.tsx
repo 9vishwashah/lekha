@@ -3,7 +3,8 @@ import { useWallet, WalletSelect, type WalletOption } from "@/components/app/wal
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, CircleDollarSign, CopyPlus, FileUp, Link2, MessageCircle, MoreHorizontal, Pencil, XCircle } from "lucide-react";
+import { Bell, CircleDollarSign, CopyPlus, FileUp, Link2, Mail, MessageCircle, MoreHorizontal, Pencil, XCircle } from "lucide-react";
+import { emailInvoice } from "@/app/(app)/actions/email";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/bits";
 import { Checkbox, Field, Input, MoneyInput, Select, Textarea } from "@/components/ui/field";
@@ -98,6 +99,7 @@ interface InvoiceInfo {
   received: string;
   due: string | null;
   phone: string | null;
+  email: string | null;
   clientName: string;
   business: string;
   notes: string;
@@ -124,7 +126,7 @@ export function InvoiceActions({
   autoOpen?: string;
 }) {
   const { pending, run, router } = useRun();
-  const [sheet, setSheet] = useState<"pay" | "remind" | "cancel" | "amend" | null>(autoOpen === "pay" || autoOpen === "remind" || autoOpen === "cancel" ? autoOpen : null);
+  const [sheet, setSheet] = useState<"pay" | "remind" | "cancel" | "amend" | "email" | null>(autoOpen === "pay" || autoOpen === "remind" || autoOpen === "cancel" ? autoOpen : null);
   const close = () => setSheet(null);
   const share = url ? invoiceShareMessage({ clientName: v.clientName, business: v.business, invoiceNo: v.no, total: toPaise(v.total), dueDate: v.due, url, proforma: v.proforma }) : "";
 
@@ -167,6 +169,16 @@ export function InvoiceActions({
         >
           {(c) => (
             <>
+              {url && (
+                <MenuItem
+                  onSelect={() => {
+                    c();
+                    setSheet("email");
+                  }}
+                >
+                  <Mail className="size-[18px]" /> Email invoice
+                </MenuItem>
+              )}
               {v.open && url && (
                 <MenuItem
                   onSelect={() => {
@@ -180,10 +192,18 @@ export function InvoiceActions({
               <MenuItem
                 onSelect={() => {
                   c();
+                  router.push(`/invoices/${v.id}/edit`);
+                }}
+              >
+                <Pencil className="size-[18px]" /> Edit invoice
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  c();
                   setSheet("amend");
                 }}
               >
-                <Pencil className="size-[18px]" /> Amend notes or due date
+                <Pencil className="size-[18px]" /> Quick edit: notes or due date
               </MenuItem>
               <MenuItem
                 onSelect={() => {
@@ -228,6 +248,7 @@ export function InvoiceActions({
       </div>
 
       {sheet === "pay" && <PaymentSheet v={v} today={today} onClose={close} />}
+      {sheet === "email" && <EmailInvoiceSheet v={v} onClose={close} />}
       {sheet === "remind" && url && <ReminderSheet v={v} url={url} today={today} suggested={suggested} lastReminder={lastReminder} onClose={close} />}
       {sheet === "amend" && <AmendSheet v={v} onClose={close} />}
       {sheet === "cancel" && <CancelSheet v={v} pending={pending} run={run} onClose={close} />}
@@ -360,6 +381,22 @@ function ReminderSheet({ v, url, today, suggested, lastReminder, onClose }: { v:
         >
           <MessageCircle className="size-5" /> Open WhatsApp
         </a>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Sends the invoice link by email, in Lekha's invoice email (view, download and pay). */
+function EmailInvoiceSheet({ v, onClose }: { v: InvoiceInfo; onClose: () => void }) {
+  const { pending, run } = useRun();
+  const [to, setTo] = useState(v.email ?? "");
+  return (
+    <Sheet open onClose={onClose} title={`Email ${v.no}`} description="Your client gets the invoice with a button to view, download and pay. Replies come to your email.">
+      <div className="flex flex-col gap-4 pb-2">
+        <Field label="Client email">{(p) => <Input {...p} type="email" value={to} onChange={(e) => setTo(e.target.value)} maxLength={200} autoComplete="email" />}</Field>
+        <Button size="lg" disabled={pending || !to.trim()} onClick={() => run(() => emailInvoice(v.id, to), onClose)}>
+          <Mail className="size-4" /> {pending ? "Sending…" : "Send invoice email"}
+        </Button>
       </div>
     </Sheet>
   );

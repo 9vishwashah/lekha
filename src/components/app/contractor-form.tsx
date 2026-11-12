@@ -26,7 +26,10 @@ export function ContractorForm({
   existing,
   taxIds,
   onDone,
+  prefill,
 }: {
+  /** Name and number picked from the phone's contacts. */
+  prefill?: { name: string; phone: string };
   contractor?: {
     id: string;
     name: string;
@@ -43,9 +46,9 @@ export function ContractorForm({
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState(saveContractor.bind(null, contractor?.id ?? null), null);
-  const [name, setName] = useState(contractor?.name ?? "");
-  const [phone, setPhone] = useState(contractor?.phone ?? "");
-  const [kind, setKind] = useState<"business" | "personal">(contractor?.kind ?? "business");
+  const [name, setName] = useState(contractor?.name ?? prefill?.name ?? "");
+  const [phone, setPhone] = useState(contractor?.phone ?? prefill?.phone ?? "");
+  const [kind, setKind] = useState<"business" | "personal">(contractor?.kind ?? (prefill ? "personal" : "business"));
   const err = (k: string) => (state && !state.ok ? state.fieldErrors?.[k] : undefined);
 
   useEffect(() => {

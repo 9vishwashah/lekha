@@ -132,14 +132,21 @@ describe("numbers and dates", () => {
 
 describe("sharing", () => {
   it("builds a valid, encoded UPI link", () => {
-    const link = upiLink({ id: "9221757111@ybl", payee: "Asha & Co", amount: toPaise("425000.50"), note: "Invoice 011/Oct/26", reference: "011/Oct/26" });
+    const link = upiLink({ id: "9221757111@ybl", payee: "Asha & Co", amount: toPaise("425000.50"), note: "Invoice 011/Oct/26" });
     const q = new URL(link.replace("upi://pay", "https://x.test/")).searchParams;
     expect(link.startsWith("upi://pay?pa=9221757111%40ybl")).toBe(true);
     expect(link).not.toContain("+");
-    expect(q.get("pn")).toBe("Asha & Co");
+    expect(q.get("pn")).toBe("Asha and Co");
     expect(q.get("am")).toBe("425000.50");
     expect(q.get("cu")).toBe("INR");
-    expect(q.get("tn")).toBe("Invoice 011/Oct/26");
+    expect(q.get("tn")).toBe("Invoice 011 Oct 26");
+  });
+
+  it("sends only person-to-person fields, so a personal UPI ID is not treated as a merchant", () => {
+    const q = new URL(upiLink({ id: "someone@okaxis", payee: "VJAS", amount: toPaise("100"), note: "Invoice 1" }).replace("upi://pay", "https://x.test/")).searchParams;
+    expect([...q.keys()].sort()).toEqual(["am", "cu", "pa", "pn", "tn"]);
+    expect(q.has("tr")).toBe(false);
+    expect(q.has("mc")).toBe(false);
   });
 
   it("leaves the amount out when none is set", () => {

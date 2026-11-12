@@ -6,6 +6,8 @@ import { loadPeople } from "@/lib/server/profiles";
 import { PageHeader, SectionTitle, Card } from "@/components/ui/bits";
 import { WorkspaceSettingsForm, MembersPanel } from "./client";
 import { NewWorkspace } from "./new-workspace";
+import { EmailPrefs } from "./email-prefs";
+import { emailConfigured } from "@/lib/email/send";
 import type { Member } from "@/lib/types";
 
 export const metadata = { title: "Settings" };
@@ -19,6 +21,7 @@ export default async function SettingsPage() {
       : Promise.resolve({ data: [] }),
     getMyProfile(),
   ]);
+  const { data: emailPrefs } = await ctx.db.from("user_profiles").select("email_new_activity, email_monthly").eq("user_id", ctx.userId).maybeSingle();
 
   const people = await loadPeople(ctx.db, ((members ?? []) as Member[]).map((m) => m.user_id));
 
@@ -53,6 +56,16 @@ export default async function SettingsPage() {
             phone={profile?.phone ?? ""}
             username={profile?.username ?? null}
             photo={avatarUrl(profile?.avatar_path)}
+          />
+        </Card>
+      </section>
+      <section id="email" className="scroll-mt-24">
+        <SectionTitle className="mb-4">Email</SectionTitle>
+        <Card>
+          <EmailPrefs
+            newActivity={(emailPrefs as { email_new_activity?: boolean } | null)?.email_new_activity ?? true}
+            monthly={(emailPrefs as { email_monthly?: boolean } | null)?.email_monthly ?? true}
+            ready={emailConfigured()}
           />
         </Card>
       </section>

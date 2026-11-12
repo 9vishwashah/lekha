@@ -17,7 +17,7 @@ import { docFromDraft, totalRows } from "@/lib/invoices/doc";
 import { type EditorState, blankItem, configFor, previewPayment } from "@/lib/invoices/editor";
 import type { InvoiceSettings, LibraryItem, PaymentConfig, PaymentProfile } from "@/lib/server/invoices";
 import { whatsappLink, whatsappNumber } from "@/lib/whatsapp";
-import { createClientLedger, issueInvoice, markShared, saveDraft, saveLibraryItem } from "@/app/(app)/actions/invoices";
+import { createClientLedger, editIssuedInvoice, issueInvoice, markShared, saveDraft, saveLibraryItem } from "@/app/(app)/actions/invoices";
 import { ImagePicker } from "./image-picker";
 import { InvoiceSheet } from "./invoice-sheet";
 import { ScaledSheet } from "./scaled-sheet";
@@ -42,7 +42,10 @@ export function InvoiceEditor({
   clients,
   ledgers,
   library,
+  issued: alreadyIssued = false,
 }: {
+  /** Editing an invoice that is already issued: no draft or issue step, just "Save changes". */
+  issued?: boolean;
   initial: EditorState;
   settings: InvoiceSettings;
   profiles: PaymentProfile[];
@@ -77,7 +80,7 @@ export function InvoiceEditor({
     const chosen = c.upi || c.bank || c.cash || c.cheque || c.other;
     const payment_config = { ...c, none: !chosen && profiles.length > 0 };
     const look = form.client_logo_path !== savedLogo ? { client_logo_path: form.client_logo_path } : undefined;
-    const res = await saveDraft({ ...form, invoice_type: form.invoice_type as "service", items, payment_config: payment_config as Record<string, unknown>, look });
+    const res = await (alreadyIssued ? editIssuedInvoice : saveDraft)({ ...form, invoice_type: form.invoice_type as "service", items, payment_config: payment_config as Record<string, unknown>, look });
     if (!res.ok) {
       setErrors(res.fieldErrors ?? {});
       toast.error(res.error);
@@ -95,6 +98,15 @@ export function InvoiceEditor({
       if (!id) return;
       toast.success("Draft saved");
       if (!form.id) router.replace(`/invoices/${id}/edit`);
+    });
+
+  const saveIssued = () =>
+    start(async () => {
+      const id = await save();
+      if (!id) return;
+      toast.success("Invoice updated. The ledger entry and the client's link show the new figures.");
+      router.push(`/invoices/${id}`);
+      router.refresh();
     });
 
   const issue = () =>
@@ -160,15 +172,22 @@ export function InvoiceEditor({
         )}
 
         <div className="no-print sticky bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-20 flex items-center gap-2 rounded-full bg-surface/95 p-2 shadow-[0_8px_24px_rgb(29_29_27/0.14)] ring-1 ring-line backdrop-blur lg:bottom-4">
-          <Button variant="ghost" disabled={pending} onClick={saveOnly} aria-label="Save as draft" className="shrink-0 px-4">
-            <Save className="size-4" /> <span className="hidden sm:inline">Save draft</span>
-          </Button>
+          {!alreadyIssued && (
+            <Button variant="ghost" disabled={pending} onClick={saveOnly} aria-label="Save as draft" className="shrink-0 px-4">
+              <Save className="size-4" /> <span className="hidden sm:inline">Save draft</span>
+            </Button>
+          )}
           <span className="num min-w-0 flex-1 truncate text-right text-[15px] font-bold">{formatINR(doc.grand)}</span>
           {step !== "Preview" && stepIndex < STEPS.length - 2 && (
             <Button variant="secondary" className="shrink-0" onClick={() => setStep(STEPS[stepIndex + 1])}>
               Next
             </Button>
           )}
+          {alreadyIssued ? (
+            <Button className="shrink-0" disabled={pending} onClick={saveIssued}>
+              <Save className="size-4" /> {pending ? "Saving…" : "Save changes"}
+            </Button>
+          ) : (
           <Button
             className="shrink-0"
             disabled={pending}
@@ -186,6 +205,7 @@ export function InvoiceEditor({
           >
             Issue
           </Button>
+          )}
         </div>
       </div>
 
