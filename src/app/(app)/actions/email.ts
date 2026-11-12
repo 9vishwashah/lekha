@@ -1,6 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { currentUser } from "@clerk/nextjs/server";
+import { clerkClient, currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { getMyProfile, getWorkspace, requireUser } from "@/lib/server/context";
 import { userDb } from "@/lib/supabase/server";
@@ -24,19 +24,36 @@ async function businessName(db: Awaited<ReturnType<typeof userDb>>, workspaceId:
 }
 
 /** "Send reminder" on a client's page: emails them what they owe, with their statement link. */
-export async function sendClientReminder(contractorId: string, note?: string): Promise<ActionResult> {
+export async function sendClientReminder(contractorId: string, note?: string, newEmail?: string): Promise<ActionResult> {
   const ctx = await getWorkspace();
   if (!emailConfigured()) return { ok: false, error: "Email is not set up yet. Add RESEND_API_KEY and EMAIL_FROM on the server." };
   const id = uuid.parse(contractorId);
   const message = z.string().trim().max(500).optional().parse(note);
-  const { data: c } = await ctx.db.from("contractors").select("id, name, email").eq("id", id).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  const typed = newEmail?.trim().toLowerCase() || null;
+  if (typed && !isEmail(typed)) return { ok: false, error: "Enter a valid email address" };
+  const { data: c } = await ctx.db.from("contractors").select("id, name, email, linked_user_id").eq("id", id).eq("workspace_id", ctx.workspace.id).maybeSingle();
   if (!c) return { ok: false, error: "Client not found" };
-  if (!isEmail(c.email)) return { ok: false, error: `Add ${c.name}'s email address first (Edit on their page).` };
+
+  // Where it goes: an address typed now, else the one on their card, else the email they signed up
+  // to Lekha with (looked up here, never shown to you).
+  let to: string | null = typed ?? (isEmail(c.email) ? c.email : null);
+  let viaLekha = false;
+  if (!to && c.linked_user_id) {
+    try {
+      const user = await (await clerkClient()).users.getUser(c.linked_user_id as string);
+      to = user.primaryEmailAddress?.emailAddress ?? null;
+      viaLekha = Boolean(to);
+    } catch {
+      to = null;
+    }
+  }
+  if (!isEmail(to)) return { ok: false, error: `Enter ${c.name}'s email address` };
+
   const { data: bal, error: balError } = await ctx.db.rpc("client_balance", { p_contractor: id });
   if (balError) return fail(balError);
   const balance = toPaise(String(bal ?? 0));
   if (balance <= 0n) return { ok: false, error: `Nothing is pending from ${c.name}.` };
-  const limited = await ctx.db.rpc("note_client_reminder", { p_contractor: id });
+  const limited = await ctx.db.rpc("note_client_reminder", { p_contractor: id, p_email: typed });
   if (limited.error) return fail(limited.error);
 
   // Their statement link: the account with them (expenses and payments) first, then a party ledger.
@@ -53,10 +70,10 @@ export async function sendClientReminder(contractorId: string, note?: string): P
   }
   const [me, business] = await Promise.all([senderIdentity(), businessName(ctx.db, ctx.workspace.id, ctx.workspace.name)]);
   const email = paymentReminderEmail({ business, sender: me.name, clientName: c.name, balance, note: message, statementUrl });
-  const sent = await sendEmail(c.email, email, { replyTo: me.email, fromName: business, tag: "payment_reminder" });
+  const sent = await sendEmail(to, email, { replyTo: me.email, fromName: business, tag: "payment_reminder" });
   if (!sent.ok) return { ok: false, error: sent.error };
   revalidatePath(`/contractors/${id}`);
-  return { ok: true, message: `Reminder emailed to ${c.email}` };
+  return { ok: true, message: viaLekha ? `Reminder emailed to ${c.name}'s Lekha email` : `Reminder emailed to ${to}` };
 }
 
 /** Monthly statement email for one client, on or off. */

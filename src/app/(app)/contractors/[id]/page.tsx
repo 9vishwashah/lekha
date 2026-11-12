@@ -204,7 +204,7 @@ export default async function ContractorPage(props: PageProps<"/contractors/[id]
         {ctx.canWrite && c.is_active && <ClientMoneyButtons client={{ id: c.id, name: c.name }} cashLedgers={cashLedgers} today={today} />}
         {ctx.canWrite && c.is_active && (
           <ClientEmail
-            client={{ id: c.id, name: c.name, email: c.email }}
+            client={{ id: c.id, name: c.name, email: c.email, linked: Boolean(c.linked_user_id) }}
             owes={String(overall > 0n ? overall : 0n)}
             monthlyOn={emailState.monthly_statement}
             lastReminded={emailState.last_reminded_at}

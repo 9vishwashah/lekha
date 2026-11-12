@@ -51,7 +51,20 @@ describe("payment reminders", () => {
     await rpc(db, OWNER, "public.note_client_reminder($1)", [client]);
     await expect(rpc(db, OWNER, "public.note_client_reminder($1)", [client])).rejects.toThrow(/Try again later/);
     const noMail = (await one<{ id: string }>(`insert into public.contractors (workspace_id, name, kind, created_by) values ($1, 'NoMail', 'personal', $2) returning id`, [ws, OWNER])).id;
-    await expect(rpc(db, OWNER, "public.note_client_reminder($1)", [noMail])).rejects.toThrow(/email address first/);
+    await expect(rpc(db, OWNER, "public.note_client_reminder($1)", [noMail])).rejects.toThrow(/Enter NoMail's email address/);
+    // Typing an address when sending saves it on the card.
+    await rpc(db, OWNER, "public.note_client_reminder($1, $2)", [noMail, " New@Example.com "]);
+    expect((await one<{ email: string }>("select email from public.contractors where id = $1", [noMail])).email).toBe("new@example.com");
+    await expect(rpc(db, OWNER, "public.note_client_reminder($1, $2)", [noMail, "not-an-email"])).rejects.toThrow(/valid email/);
+  });
+
+  it("a client on Lekha with no typed email can be reminded and get monthly statements", async () => {
+    await rpc(db, "user_email_namya", "public.save_my_profile($1, $2)", ["Namya", null]);
+    await rpc(db, "user_email_namya", "public.set_my_username($1)", ["namya"]);
+    const namya = (await one<{ id: string }>(`insert into public.contractors (workspace_id, name, kind, created_by) values ($1, 'Namya', 'personal', $2) returning id`, [ws, OWNER])).id;
+    await rpc(db, OWNER, "public.link_client_by_username($1, $2)", [namya, "namya"]);
+    await rpc(db, OWNER, "public.note_client_reminder($1)", [namya]);
+    await rpc(db, OWNER, "public.set_client_monthly_statement($1, $2)", [namya, true]);
   });
 });
 
@@ -74,8 +87,9 @@ describe("scheduled emails", () => {
   it("monthly: statements only to clients who opted in, a summary to the owner, each once a month", async () => {
     await rpc(db, OWNER, "public.set_client_monthly_statement($1, $2)", [client, true]);
     const m = await rpc<{ clients: { client_email: string; balance: number }[]; owners: { user_id: string; owed_to_you: number; top: unknown[] }[] }>(db, null, "public.email_monthly_claim($1, $2::date)", [SECRET, "2026-12-01"]);
-    expect(m.clients).toEqual([expect.objectContaining({ client_email: "regal@example.com" })]);
-    expect(Number(m.clients[0].balance)).toBe(await balance(client));
+    const regal = m.clients.find((c) => c.client_email === "regal@example.com")!;
+    expect(regal).toBeTruthy();
+    expect(Number(regal.balance)).toBe(await balance(client));
     expect(m.owners).toEqual([expect.objectContaining({ user_id: OWNER })]);
     const again = await rpc<{ clients: unknown[]; owners: unknown[] }>(db, null, "public.email_monthly_claim($1, $2::date)", [SECRET, "2026-12-15"]);
     expect(again).toMatchObject({ clients: [], owners: [] });

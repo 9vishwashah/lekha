@@ -65,14 +65,17 @@ export async function GET(request: Request) {
     prev.setUTCMonth(prev.getUTCMonth() - 1);
     const label = prev.toISOString().slice(0, 7);
     const m = monthly as {
-      clients: { client_name: string; client_email: string; business: string; owner_name: string | null; balance: number | string; share_cipher: string | null }[];
+      clients: { client_name: string; client_email: string | null; linked_user_id: string | null; business: string; owner_name: string | null; balance: number | string; share_cipher: string | null }[];
       owners: { user_id: string; name: string | null; workspace: string; owed_to_you: number | string; you_owe: number | string; top: { name: string; balance: number | string }[] }[];
     };
+    // Clients on Lekha without a typed email get it at the email they signed up with.
+    const clientAccounts = await emailsFor(m.clients.filter((c) => !c.client_email && c.linked_user_id).map((c) => c.linked_user_id!));
     for (const c of m.clients) {
-      if (!isEmail(c.client_email)) continue;
+      const to = c.client_email ?? (c.linked_user_id ? clientAccounts.get(c.linked_user_id) : undefined);
+      if (!isEmail(to)) continue;
       const token = openToken(c.share_cipher);
       const email = monthlyStatementEmail({ business: c.business, ownerName: c.owner_name, clientName: c.client_name, balance: paise(c.balance), month: label, statementUrl: token ? `${base}/s/${token}` : null });
-      const sent = await sendEmail(c.client_email, email, { fromName: c.business, tag: "monthly_statement" });
+      const sent = await sendEmail(to, email, { fromName: c.business, tag: "monthly_statement" });
       if (sent.ok) report.statements += 1;
       else report.failed += 1;
     }
